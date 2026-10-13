@@ -1,0 +1,369 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MembershipRole {
+  SCHOOL_ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Tenant {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String       @db.VarChar(150)
+  slug      String       @unique @db.VarChar(100)
+  status    TenantStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
+
+  memberships   Membership[]
+  academicYears AcademicYear[]
+  classes SchoolClass[]
+  students   Student[]
+  teachers   Teacher[]
+  enrolments Enrolment[]
+  teachingAssignments TeachingAssignment[]
+  attendanceRecords AttendanceRecord[]
+  exams Exam[]
+  marks         Mark[]
+  announcements Announcement[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @db.VarChar(150)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  
+  platformRole PlatformRole? @map("platform_role")
+
+
+  memberships Membership[]
+  students Student[]
+  teachers Teacher[]
+  attendanceMarked AttendanceRecord[]
+  gradedMarks   Mark[]
+  announcements Announcement[]
+
+  @@map("users")
+}
+
+model Membership {
+  tenantId String           @map("tenant_id") @db.Uuid
+  userId   String           @map("user_id") @db.Uuid
+  role     MembershipRole
+  status   MembershipStatus @default(ACTIVE)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, userId])
+  @@index([userId, status])
+  @@map("memberships")
+}
+
+
+
+enum AcademicYearStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+}
+
+model AcademicYear {
+  id        String            @id @default(uuid()) @db.Uuid
+  tenantId  String            @map("tenant_id") @db.Uuid
+  name      String            @db.VarChar(50)
+  startDate DateTime          @map("start_date") @db.Date
+  endDate   DateTime          @map("end_date") @db.Date
+  status    AcademicYearStatus @default(UPCOMING)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  classes SchoolClass[]
+  enrolments Enrolment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@index([tenantId, status])
+  @@map("academic_years")
+}
+
+
+model SchoolClass {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  name           String   @db.VarChar(50)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [tenantId, academicYearId], references: [tenantId, id], onDelete: Cascade)
+  sections     Section[]
+  subjects     Subject[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, academicYearId, name])
+  @@index([tenantId, academicYearId])
+  @@map("classes")
+}
+
+model Section {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  classId   String   @map("class_id") @db.Uuid
+  name      String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  schoolClass SchoolClass @relation(fields: [tenantId, classId], references: [tenantId, id], onDelete: Cascade)
+  
+  enrolments Enrolment[]
+  teachingAssignments TeachingAssignment[]
+  attendanceRecords   AttendanceRecord[]
+  exams  Exam[]
+  announcements Announcement[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, classId, name])
+  @@index([tenantId, classId])
+  @@map("sections")
+}
+
+model Subject {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  classId   String   @map("class_id") @db.Uuid
+  name      String   @db.VarChar(100)
+  code      String?  @db.VarChar(30)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  schoolClass SchoolClass @relation(fields: [tenantId, classId], references: [tenantId, id], onDelete: Cascade)
+  
+  teachingAssignments TeachingAssignment[]
+  exams               Exam[]  
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, classId, name])
+  @@index([tenantId, classId])
+  @@map("subjects")
+}
+
+
+
+enum EnrolmentStatus {
+  ACTIVE
+  COMPLETED
+  TRANSFERRED
+  WITHDRAWN
+}
+
+model Student {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  admissionNo String   @map("admission_no") @db.VarChar(50)
+  firstName   String   @map("first_name") @db.VarChar(100)
+  lastName    String   @map("last_name") @db.VarChar(100)
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  enrolments Enrolment[]
+  attendanceRecords AttendanceRecord[]
+  marks Mark[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, admissionNo])
+  @@unique([tenantId, userId])
+  @@index([tenantId, lastName])
+  @@map("students")
+}
+
+model Teacher {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  employeeNo String?  @map("employee_no") @db.VarChar(50)
+  firstName  String   @map("first_name") @db.VarChar(100)
+  lastName   String   @map("last_name") @db.VarChar(100)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  teachingAssignments TeachingAssignment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, userId])
+  @@unique([tenantId, employeeNo])
+  @@index([tenantId, lastName])
+  @@map("teachers")
+}
+
+model Enrolment {
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @map("tenant_id") @db.Uuid
+  studentId      String          @map("student_id") @db.Uuid
+  sectionId      String          @map("section_id") @db.Uuid
+  academicYearId String          @map("academic_year_id") @db.Uuid
+  status         EnrolmentStatus @default(ACTIVE)
+  enrolledAt     DateTime        @default(now()) @map("enrolled_at") @db.Timestamp(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+  section      Section      @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [tenantId, academicYearId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, studentId])
+  @@index([tenantId, sectionId, academicYearId])
+  @@map("enrolments")
+}
+
+
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum ExamStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model TeachingAssignment {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  teacherId String   @map("teacher_id") @db.Uuid
+  sectionId String   @map("section_id") @db.Uuid
+  subjectId String   @map("subject_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [tenantId, teacherId], references: [tenantId, id], onDelete: Cascade)
+  section Section @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Cascade)
+  subject Subject @relation(fields: [tenantId, subjectId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, teacherId, sectionId, subjectId])
+  @@index([tenantId, sectionId])
+  @@index([tenantId, teacherId])
+  @@map("teaching_assignments")
+}
+
+model AttendanceRecord {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id") @db.Uuid
+  studentId      String           @map("student_id") @db.Uuid
+  sectionId      String           @map("section_id") @db.Uuid
+  attendanceDate DateTime         @map("attendance_date") @db.Date
+  status         AttendanceStatus
+  markedBy       String           @map("marked_by") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  student  Student @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+  section  Section @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Restrict)
+  marker   User    @relation(fields: [markedBy], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, sectionId, studentId, attendanceDate])
+  @@index([tenantId, studentId, attendanceDate])
+  @@map("attendance_records")
+}
+
+model Exam {
+  id        String     @id @default(uuid()) @db.Uuid
+  tenantId  String     @map("tenant_id") @db.Uuid
+  subjectId String     @map("subject_id") @db.Uuid
+  sectionId String     @map("section_id") @db.Uuid
+  name      String     @db.VarChar(100)
+  examDate  DateTime   @map("exam_date") @db.Date
+  maxMarks  Int        @map("max_marks")
+  status    ExamStatus @default(SCHEDULED)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [tenantId, subjectId], references: [tenantId, id], onDelete: Restrict)
+  section Section @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Restrict)
+  marks Mark[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, sectionId, examDate])
+  @@index([tenantId, subjectId])
+  @@map("exams")
+}
+
+
+
+model Mark {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  examId    String   @map("exam_id") @db.Uuid
+  studentId String   @map("student_id") @db.Uuid
+  score     Decimal  @db.Decimal(7, 2)
+  gradedBy  String?  @map("graded_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  exam    Exam    @relation(fields: [tenantId, examId], references: [tenantId, id], onDelete: Cascade)
+  student Student @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+  grader  User?   @relation(fields: [gradedBy], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, examId, studentId])
+  @@index([tenantId, studentId])
+  @@map("marks")
+}
+
+model Announcement {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  sectionId   String?  @map("section_id") @db.Uuid
+  createdBy   String   @map("created_by") @db.Uuid
+  title       String   @db.VarChar(200)
+  content     String   @db.Text
+  publishedAt DateTime? @map("published_at") @db.Timestamp(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  section Section? @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Restrict)
+  creator User    @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, publishedAt])
+  @@index([tenantId, sectionId])
+  @@map("announcements")
+}
+
+
+
+enum PlatformRole {
+  SUPER_ADMIN
+}
+
