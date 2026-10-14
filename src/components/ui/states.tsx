@@ -14,8 +14,8 @@ export function PageHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
-        {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+        <h1 className="text-xl font-semibold text-ink">{title}</h1>
+        {description ? <p className="mt-1 text-sm text-body">{description}</p> : null}
       </div>
       {action}
     </div>
@@ -33,12 +33,12 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
-      <span className="flex size-11 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+      <span className="flex size-11 items-center justify-center rounded-full bg-brand-50 text-body">
         <EmptyIcon />
       </span>
       <div>
-        <p className="text-sm font-semibold text-slate-900">{title}</p>
-        {description ? <p className="mt-1 max-w-sm text-sm text-slate-500">{description}</p> : null}
+        <p className="text-sm font-semibold text-ink">{title}</p>
+        {description ? <p className="mt-1 max-w-sm text-sm text-body">{description}</p> : null}
       </div>
       {action}
     </div>
@@ -53,8 +53,8 @@ export function ForbiddenState({ schoolName }: { schoolName?: string }) {
         <LockIcon />
       </span>
       <div>
-        <p className="text-sm font-semibold text-slate-900">You cannot access this school</p>
-        <p className="mt-1 max-w-md text-sm text-slate-500">
+        <p className="text-sm font-semibold text-ink">You cannot access this school</p>
+        <p className="mt-1 max-w-md text-sm text-body">
           {schoolName
             ? `Your account is not a member of ${schoolName}.`
             : "Your account is not a member of this school."}
@@ -71,8 +71,8 @@ export function ErrorState({ onRetry }: { onRetry?: () => void }) {
         <AlertIcon />
       </span>
       <div>
-        <p className="text-sm font-semibold text-slate-900">This screen failed to load</p>
-        <p className="mt-1 max-w-md text-sm text-slate-500">
+        <p className="text-sm font-semibold text-ink">This screen failed to load</p>
+        <p className="mt-1 max-w-md text-sm text-body">
           The request did not go through. Check your connection and try again.
         </p>
       </div>
@@ -88,9 +88,9 @@ export function ErrorState({ onRetry }: { onRetry?: () => void }) {
 /** Blocking spinner for guards, while the session is being resolved. */
 export function FullPageLoader({ label }: { label: string }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50">
-      <span className="size-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-      <p className="text-sm text-slate-500">{label}</p>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-page">
+      <span className="size-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+      <p className="text-sm text-body">{label}</p>
     </div>
   );
 }

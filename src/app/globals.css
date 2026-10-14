@@ -1,11 +1,53 @@
 @import "tailwindcss";
 
+/*
+ * ClassForge palette, sampled from the approved mockups so the UI and the
+ * design files stay in step. Greens are the brand; the greys are a green-leaning
+ * neutral ramp rather than plain slate, which is what keeps the product feeling
+ * like one thing.
+ */
+@theme {
+  --color-brand-50: #edf2ec;
+  --color-brand-100: #e5eee4;
+  --color-brand-200: #cfddd1;
+  --color-brand-300: #a9bcaf;
+  --color-brand-400: #789784;
+  --color-brand-500: #4e755f;
+  --color-brand-600: #37634b;
+  --color-brand-700: #2d4f3b;
+  --color-brand-800: #243d2f;
+
+  --color-ink: #242d28;
+  --color-body: #66716a;
+  --color-muted: #8c948f;
+  --color-line: #e6eae7;
+  --color-page: #fafbf9;
+  --color-panel: #edf2ec;
+
+  --color-danger-50: #fff5f3;
+  --color-danger-200: #f0cdc9;
+  --color-danger-600: #af3935;
+}
+
 @layer base {
   html {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-page text-ink antialiased;
+  }
+
+  body {
+    @apply text-body;
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-indigo-600;
+    @apply outline-2 outline-offset-2 outline-brand-600;
+  }
+}
+
+@layer components {
+  /* The soft lift the cards and the sign-in card use across the product. */
+  .shadow-card {
+    box-shadow:
+      0 1px 2px rgb(36 45 40 / 0.04),
+      0 12px 32px -12px rgb(36 45 40 / 0.12);
   }
 }

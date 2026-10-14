@@ -1,20 +1,28 @@
 "use client";
 
+import Link from "next/link";
+import { TeacherDashboard } from "@/components/dashboard/teacher-dashboard";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader, StatCard } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/states";
-import { Badge } from "@/components/ui/badge";
 import { schoolApi } from "@/lib/api";
-import { useApi, useMembership } from "@/lib/hooks";
+import { useApi, useMembership, useRole } from "@/lib/hooks";
 import { schoolHref } from "@/lib/nav";
 import { ROLE_LABELS } from "@/types";
-import Link from "next/link";
 
+/**
+ * A teacher gets their own day view. Everyone else gets the school-wide roll-up,
+ * which is what the admin screens are actually about.
+ */
 export default function DashboardPage() {
+  const role = useRole();
+  return role === "TEACHER" ? <TeacherDashboard /> : <SchoolOverview />;
+}
+
+function SchoolOverview() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
   const membership = useMembership();
-
-  const students = useApi(() => schoolApi.listStudents(schoolSlug, { page: 1 }), [schoolSlug]);
-  const teachers = useApi(() => schoolApi.listTeachers(schoolSlug), [schoolSlug]);
+  const dashboard = useApi(() => schoolApi.getDashboard(schoolSlug), [schoolSlug]);
 
   return (
     <div className="space-y-6">
@@ -26,10 +34,14 @@ export default function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Students"
-          value={students.data?.total ?? 0}
+          value={dashboard.data?.studentCount ?? 0}
           hint="Across every class"
         />
-        <StatCard label="Teachers" value={teachers.data?.length ?? 0} tone="positive" />
+        <StatCard
+          label="Teachers"
+          value={dashboard.data?.teacherCount ?? 0}
+          tone="positive"
+        />
         <StatCard
           label="Your role here"
           value={membership ? ROLE_LABELS[membership.role] : "—"}
@@ -44,13 +56,13 @@ export default function DashboardPage() {
         <CardBody>
           <div className="flex flex-wrap gap-2">
             <Link href={schoolHref(schoolSlug, "students")}>
-              <Badge tone="indigo">Students</Badge>
+              <Badge tone="brand">Students</Badge>
             </Link>
             <Link href={schoolHref(schoolSlug, "attendance")}>
-              <Badge tone="indigo">Attendance</Badge>
+              <Badge tone="brand">Attendance</Badge>
             </Link>
             <Link href={schoolHref(schoolSlug, "announcements")}>
-              <Badge tone="indigo">Announcements</Badge>
+              <Badge tone="brand">Announcements</Badge>
             </Link>
           </div>
         </CardBody>

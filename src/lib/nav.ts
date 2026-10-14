@@ -1,6 +1,7 @@
 import type { ComponentType, SVGProps } from "react";
 import {
   AnnouncementsIcon,
+  AssignmentsIcon,
   AttendanceIcon,
   ClassesIcon,
   DashboardIcon,
@@ -24,6 +25,7 @@ export const SCHOOL_NAV: NavItem[] = [
   { label: "Teachers", area: "teachers", icon: TeachersIcon },
   { label: "Classes", area: "classes", icon: ClassesIcon },
   { label: "Attendance", area: "attendance", icon: AttendanceIcon },
+  { label: "Assignments", area: "assignments", icon: AssignmentsIcon },
   { label: "Exams & Grades", area: "exams", icon: ExamsIcon },
   { label: "Announcements", area: "announcements", icon: AnnouncementsIcon },
 ];

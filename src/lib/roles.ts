@@ -13,6 +13,7 @@ export const SCHOOL_AREAS = {
   teachers: ["SCHOOL_ADMIN", "TEACHER"],
   classes: ["SCHOOL_ADMIN", "TEACHER", "STUDENT"],
   attendance: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
+  assignments: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
   exams: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
   announcements: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
 } as const satisfies Record<string, readonly Role[]>;

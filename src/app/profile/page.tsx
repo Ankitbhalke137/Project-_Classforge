@@ -25,7 +25,7 @@ export default function ProfilePage() {
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-900">{user.name}</p>
               <p className="truncate text-sm text-slate-500">{user.email}</p>
-              {user.isSuperAdmin ? <Badge tone="indigo">Super Admin</Badge> : null}
+              {user.isSuperAdmin ? <Badge tone="brand">Super Admin</Badge> : null}
             </div>
           </div>
         </CardBody>
@@ -44,7 +44,7 @@ export default function ProfilePage() {
                     <p className="truncate text-sm font-medium text-slate-900">{school.schoolName}</p>
                     <p className="truncate text-xs text-slate-500">/{school.schoolSlug}</p>
                   </div>
-                  <Badge tone="indigo">{ROLE_LABELS[school.role]}</Badge>
+                  <Badge tone="brand">{ROLE_LABELS[school.role]}</Badge>
                 </li>
               ))}
             </ul>

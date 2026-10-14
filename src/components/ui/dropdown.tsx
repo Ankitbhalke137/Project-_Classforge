@@ -54,7 +54,7 @@ export function Dropdown({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+        className="flex items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
       >
         {trigger}
       </button>
@@ -65,7 +65,7 @@ export function Dropdown({
           role="menu"
           aria-label={label}
           className={cn(
-            "absolute z-40 mt-2 min-w-56 overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-slate-200",
+            "absolute z-40 mt-2 min-w-56 overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-line",
             align === "right" ? "right-0" : "left-0",
           )}
         >
@@ -78,13 +78,13 @@ export function Dropdown({
                 setOpen(false);
                 item.onSelect();
               }}
-              className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-ink hover:bg-page"
             >
               {item.icon}
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-slate-900">{item.label}</span>
+                <span className="block truncate font-medium text-ink">{item.label}</span>
                 {item.description ? (
-                  <span className="block truncate text-xs text-slate-500">{item.description}</span>
+                  <span className="block truncate text-xs text-body">{item.description}</span>
                 ) : null}
               </span>
               {item.trailing}

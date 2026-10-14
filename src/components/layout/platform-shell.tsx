@@ -12,19 +12,19 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   const links = [{ label: "Schools", href: "/platform/schools", icon: SchoolsIcon }];
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4">
+    <div className="flex min-h-screen flex-col bg-page">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line bg-white px-4">
         <Link href="/platform" className="flex items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">
+          <span className="flex size-7 items-center justify-center rounded-md bg-ink text-xs font-bold text-white">
             CF
           </span>
-          <span className="text-sm font-semibold text-slate-900">ClassForge Platform</span>
+          <span className="text-sm font-semibold text-ink">ClassForge Platform</span>
         </Link>
         <UserMenu />
       </header>
 
       <div className="flex flex-1">
-        <aside className="hidden w-56 shrink-0 border-r border-slate-200 bg-white sm:block">
+        <aside className="hidden w-56 shrink-0 border-r border-line bg-white sm:block">
           <nav aria-label="Platform" className="flex flex-col gap-1 p-3">
             {links.map((link) => {
               const isActive = pathname === link.href;
@@ -38,8 +38,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium",
                     isActive
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                      ? "bg-ink text-white"
+                      : "text-body hover:bg-brand-50 hover:text-ink",
                   )}
                 >
                   <Icon width={18} height={18} />

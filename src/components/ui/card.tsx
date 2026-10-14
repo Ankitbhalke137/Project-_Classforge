@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("rounded-xl bg-white ring-1 ring-slate-200 shadow-sm", className)}>
+    <div className={cn("rounded-xl bg-white ring-1 ring-line shadow-sm", className)}>
       {children}
     </div>
   );
@@ -19,10 +19,10 @@ export function CardHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
       <div>
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-        {description ? <p className="mt-0.5 text-sm text-slate-500">{description}</p> : null}
+        <h2 className="text-base font-semibold text-ink">{title}</h2>
+        {description ? <p className="mt-0.5 text-sm text-body">{description}</p> : null}
       </div>
       {action}
     </div>
@@ -34,10 +34,10 @@ export function CardBody({ className, children }: { className?: string; children
 }
 
 const TONES = {
-  default: "text-slate-900",
-  positive: "text-emerald-600",
+  default: "text-ink",
+  positive: "text-brand-600",
   warning: "text-amber-600",
-  negative: "text-red-600",
+  negative: "text-danger-600",
 };
 
 /** One number with a label. Used on the dashboard and the platform overview. */
@@ -46,17 +46,23 @@ export function StatCard({
   value,
   hint,
   tone = "default",
+  icon,
 }: {
   label: string;
   value: string | number;
   hint?: string;
   tone?: keyof typeof TONES;
+  /** Optional glyph in the top-right corner. */
+  icon?: ReactNode;
 }) {
   return (
     <Card className="px-5 py-4">
-      <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className={cn("mt-1 text-2xl font-semibold", TONES[tone])}>{value}</p>
-      {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-body">{label}</p>
+        {icon ? <span className="shrink-0 text-brand-600">{icon}</span> : null}
+      </div>
+      <p className={cn("mt-1.5 text-3xl font-semibold tracking-tight", TONES[tone])}>{value}</p>
+      {hint ? <p className="mt-1 text-xs text-body">{hint}</p> : null}
     </Card>
   );
 }

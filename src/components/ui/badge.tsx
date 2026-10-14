@@ -2,11 +2,16 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 const TONES = {
-  neutral: "bg-slate-100 text-slate-700 ring-slate-200",
-  indigo: "bg-indigo-50 text-indigo-700 ring-indigo-200",
-  green: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  neutral: "bg-brand-50 text-body ring-brand-200",
+  brand: "bg-brand-100 text-brand-700 ring-brand-200",
+  green: "bg-brand-50 text-brand-700 ring-brand-200",
   amber: "bg-amber-50 text-amber-700 ring-amber-200",
-  red: "bg-red-50 text-red-700 ring-red-200",
+  red: "bg-danger-50 text-danger-600 ring-danger-200",
+  /**
+   * Deprecated alias for `brand`, kept so screens that have not been moved off
+   * the old indigo naming still typecheck. Remove once none are left.
+   */
+  indigo: "bg-brand-100 text-brand-700 ring-brand-200",
 };
 
 export function Badge({
@@ -31,15 +36,17 @@ export function Badge({
   );
 }
 
-const SIZES = { sm: "size-7 text-[11px]", md: "size-9 text-xs", lg: "size-12 text-sm" };
+const SIZES = { sm: "size-7 text-[11px]", md: "size-9 text-xs", lg: "size-10 text-sm" };
 
-/** Circular initials. Falls back to "?" for an empty name. */
+/** Initials tile. `shape="square"` matches the school switcher chip. */
 export function Avatar({
   name,
   size = "md",
+  shape = "circle",
 }: {
   name: string;
   size?: keyof typeof SIZES;
+  shape?: "circle" | "square";
 }) {
   const initials =
     name
@@ -53,8 +60,9 @@ export function Avatar({
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-700",
+        "inline-flex shrink-0 items-center justify-center bg-brand-100 font-semibold text-brand-700",
         SIZES[size],
+        shape === "circle" ? "rounded-full" : "rounded-lg",
       )}
     >
       {initials}

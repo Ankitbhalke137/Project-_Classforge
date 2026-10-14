@@ -2,10 +2,10 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 const VARIANTS = {
-  primary: "bg-indigo-600 text-white hover:bg-indigo-700 focus-visible:outline-indigo-600",
-  secondary: "bg-white text-slate-800 ring-1 ring-slate-300 hover:bg-slate-50 focus-visible:outline-slate-500",
-  ghost: "bg-transparent text-slate-700 hover:bg-slate-100 focus-visible:outline-slate-500",
-  danger: "bg-red-600 text-white hover:bg-red-700 focus-visible:outline-red-600",
+  primary: "bg-brand-600 text-white hover:bg-brand-700 focus-visible:outline-brand-600",
+  secondary: "bg-white text-ink ring-1 ring-line hover:bg-page focus-visible:outline-brand-600",
+  ghost: "bg-transparent text-body hover:bg-brand-50 hover:text-ink focus-visible:outline-brand-600",
+  danger: "bg-danger-600 text-white hover:bg-danger-600/90 focus-visible:outline-danger-600",
 };
 
 const SIZES = {

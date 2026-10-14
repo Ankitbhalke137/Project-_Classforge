@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { schoolApi } from "@/lib/api";
 import { canAccessArea, type SchoolArea } from "@/lib/roles";
 import { useAuth } from "@/store/auth";
-import type { Membership, Role } from "@/types";
+import type { Membership, Role, SchoolIdentity } from "@/types";
 
 /**
  * The school in the URL. Read from the pathname rather than from a layout prop,
@@ -34,6 +35,25 @@ export function useRole(): Role | null {
 /** Lets a component hide a button without asking the backend first. */
 export function useCan(area: SchoolArea): boolean {
   return canAccessArea(useRole(), area);
+}
+
+/**
+ * Who the signed-in account is inside the school in the URL — their student
+ * record, their children, their teacher record.
+ *
+ * Attendance and assignments both need this, because the same screen shows staff
+ * a register and a parent their child's record.
+ */
+export function useIdentity(): { identity: SchoolIdentity | null; loading: boolean } {
+  const email = useAuth((state) => state.user?.email);
+  const schoolSlug = useSchoolSlug();
+
+  const { data, loading } = useApi(
+    () => schoolApi.getIdentity(schoolSlug ?? "", email ?? ""),
+    [schoolSlug, email],
+  );
+
+  return { identity: data, loading };
 }
 
 /**
