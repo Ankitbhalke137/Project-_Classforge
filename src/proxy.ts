@@ -16,7 +16,7 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
 
-  if (isPublic || request.cookies.get("cf_access_token")) {
+  if (isPublic || request.cookies.get("access_token")) {
     return NextResponse.next();
   }
 
