@@ -57,9 +57,12 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className={`relative w-full ${SIZES[size]} rounded-t-2xl bg-white shadow-xl outline-none sm:rounded-2xl`}
+        // The panel is capped to the viewport and the body scrolls inside it, so a
+        // long screen — a class with a roster and a timetable — never runs off the
+        // bottom. Header and footer stay put while the middle moves.
+        className={`relative flex max-h-[92vh] w-full flex-col ${SIZES[size]} rounded-t-2xl bg-white shadow-xl outline-none sm:max-h-[88vh] sm:rounded-2xl`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>
             <h2 className="text-base font-semibold text-ink">{title}</h2>
             {description ? <p className="mt-0.5 text-sm text-body">{description}</p> : null}
@@ -73,9 +76,11 @@ export function Modal({
             <CloseIcon />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="overflow-y-auto px-5 py-4">{children}</div>
         {footer ? (
-          <div className="flex justify-end gap-2 border-t border-line px-5 py-4">{footer}</div>
+          <div className="flex shrink-0 justify-end gap-2 border-t border-line px-5 py-4">
+            {footer}
+          </div>
         ) : null}
       </div>
     </div>

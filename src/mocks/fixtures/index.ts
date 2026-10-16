@@ -205,6 +205,7 @@ function membership(profile: SchoolProfile, role: Membership["role"]): Membershi
     schoolSlug: profile.slug,
     schoolName: profile.name,
     role,
+    status: profile.status,
   };
 }
 

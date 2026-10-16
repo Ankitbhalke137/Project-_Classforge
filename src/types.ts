@@ -30,6 +30,11 @@ export interface Membership {
   schoolSlug: string;
   schoolName: string;
   role: Role;
+  /**
+   * A suspended school stays readable and turns read-only, so the shell can say
+   * so and hide every write control. Resolved when the session is issued.
+   */
+  status: School["status"];
 }
 
 /* ---------- Schools ---------- */

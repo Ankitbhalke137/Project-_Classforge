@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { schoolApi } from "@/lib/api";
-import { canAccessArea, type SchoolArea } from "@/lib/roles";
+import {
+  canAccessArea,
+  canPerform,
+  scopeFor,
+  type Action,
+  type SchoolArea,
+} from "@/lib/roles";
 import { useAuth } from "@/store/auth";
 import type { Membership, Role, SchoolIdentity } from "@/types";
 
@@ -35,6 +41,40 @@ export function useRole(): Role | null {
 /** Lets a component hide a button without asking the backend first. */
 export function useCan(area: SchoolArea): boolean {
   return canAccessArea(useRole(), area);
+}
+
+/** The same, for an action rather than a screen. */
+export function useCanPerform(action: Action): boolean {
+  return canPerform(useRole(), action);
+}
+
+/** Checks if a role can perform an action (alias for useCanPerform). */
+export { canPerform };
+
+/**
+ * A suspended school can be read but not written to. Screens combine this with
+ * the role's own permissions, and the mock API refuses the write either way.
+ */
+export function useIsReadOnly(): boolean {
+  return useMembership()?.status === "SUSPENDED";
+}
+
+/**
+ * The value, but only after it stops changing for `delay` ms.
+ *
+ * Search boxes feed straight into a request, so without this every keystroke
+ * costs a round trip. The box stays bound to the live value, which keeps typing
+ * responsive, and only the request waits.
+ */
+export function useDebounced<T>(value: T, delay = 300): T {
+  const [settled, setSettled] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return settled;
 }
 
 /**

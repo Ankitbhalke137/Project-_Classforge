@@ -4,8 +4,13 @@ import { useId } from "react";
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
+/**
+ * 48px control height, white fill, 1px `#e2e8f0` outline, rounded-xl. Focus moves
+ * the border to emerald and adds a soft outer ring, so keyboard focus is obvious
+ * on a long form without a heavy outline.
+ */
 const CONTROL =
-  "w-full rounded-lg bg-white px-3 py-2 text-sm text-ink placeholder:text-muted ring-1 ring-line focus:outline-2 focus:outline-offset-1 focus:outline-brand-600 disabled:bg-page aria-[invalid=true]:ring-danger-600";
+  "w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft disabled:bg-page aria-[invalid=true]:border-danger-600 aria-[invalid=true]:ring-danger-200";
 
 /** Label + control + error message. Shared by Input and Select. */
 function Field({
@@ -25,7 +30,7 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-sm font-medium text-ink">
+      <label htmlFor={htmlFor} className="text-sm font-medium text-primary">
         {label}
         {required ? <span className="ml-0.5 text-danger-600">*</span> : null}
       </label>

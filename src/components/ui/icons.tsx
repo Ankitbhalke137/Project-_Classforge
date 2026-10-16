@@ -240,3 +240,248 @@ export const GraduationIcon = (props: SVGProps<SVGSVGElement>) => (
     <path d="M21.5 9v5" />
   </Icon>
 );
+
+/* ---------- Heritage Emerald navigation ---------- */
+
+export const FeesIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <rect x="2.5" y="6" width="19" height="12" rx="2" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M6 10v4M18 10v4" />
+  </Icon>
+);
+
+export const ReportsIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M3 20h18" />
+    <path d="M4 16.5 9 11l3.5 3 6.5-7" />
+    <path d="M15.5 7H19v3.5" />
+  </Icon>
+);
+
+export const ScheduleIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 10h18M8 3v4M16 3v4" />
+    <path d="M7.5 14h2M11.5 14h2M15.5 14h1M7.5 17.5h2M11.5 17.5h2M15.5 17.5h1" />
+  </Icon>
+);
+
+export const SettingsIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6M18.7 18.7l-1.6-1.6M6.9 6.9 5.3 5.3" />
+  </Icon>
+);
+
+export const HelpIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.2-2.8 4" />
+    <path d="M12 17.5h.01" />
+  </Icon>
+);
+
+/* ---------- Chrome and controls ---------- */
+
+export const SearchIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="m16 16 4.5 4.5" />
+  </Icon>
+);
+
+export const ChevronRightIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="m9 6 6 6-6 6" />
+  </Icon>
+);
+
+export const ChevronLeftIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="m15 6-6 6 6 6" />
+  </Icon>
+);
+
+export const ArrowUpIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M12 20V4" />
+    <path d="m6 10 6-6 6 6" />
+  </Icon>
+);
+
+export const ArrowDownIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M12 4v16" />
+    <path d="m6 14 6 6 6-6" />
+  </Icon>
+);
+
+export const PlusIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M12 5v14M5 12h14" />
+  </Icon>
+);
+
+export const DownloadIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M12 3v12" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M4 20h16" />
+  </Icon>
+);
+
+export const RefreshIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M20 12a8 8 0 1 1-2.6-5.9" />
+    <path d="M20 4v4h-4" />
+  </Icon>
+);
+
+export const FilterIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M4 6h10M18 6h2M4 12h3M11 12h9M4 18h8M16 18h4" />
+    <circle cx="16" cy="6" r="2" />
+    <circle cx="9" cy="12" r="2" />
+    <circle cx="14" cy="18" r="2" />
+  </Icon>
+);
+
+export const GridIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+  </Icon>
+);
+
+export const ListIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M4 6.5h1M4 12h1M4 17.5h1" />
+    <path d="M9 6.5h11M9 12h11M9 17.5h11" />
+  </Icon>
+);
+
+/* ---------- Dashboard furniture ---------- */
+
+export const BoltIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2Z" />
+  </Icon>
+);
+
+export const BarChartIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M3 20h18" />
+    <path d="M6.5 20v-6M11 20V7M15.5 20v-9M20 20V4" />
+  </Icon>
+);
+
+export const CampaignIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M4 10v4a1 1 0 0 0 1 1h2.5L14 19V5L7.5 9H5a1 1 0 0 0-1 1Z" />
+    <path d="M17.5 9a3.5 3.5 0 0 1 0 6" />
+    <path d="M7 15v4" />
+  </Icon>
+);
+
+export const SchoolIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="m12 3 9 4.5-9 4.5L3 7.5 12 3Z" />
+    <path d="M6.5 10.2V16c0 1.5 2.5 3 5.5 3s5.5-1.5 5.5-3v-5.8" />
+    <path d="M21 7.5V14" />
+  </Icon>
+);
+
+export const HistoryIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" />
+    <path d="M3 4.5V10h5.5" />
+    <path d="M12 8v4.3l3 1.7" />
+  </Icon>
+);
+
+export const SwitchAccountIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M2.5 20v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1" />
+    <path d="M16.5 8.5h5M19.5 6.5l2 2-2 2" />
+  </Icon>
+);
+
+export const PersonAddIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <circle cx="9.5" cy="8" r="3.5" />
+    <path d="M3 20v-1a5 5 0 0 1 5-5h3a5 5 0 0 1 5 5v1" />
+    <path d="M18 7v6M15 10h6" />
+  </Icon>
+);
+
+export const BadgeIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <rect x="3.5" y="5" width="17" height="14" rx="2" />
+    <circle cx="9" cy="11" r="2" />
+    <path d="M6 16c.4-1.4 1.5-2.2 3-2.2s2.6.8 3 2.2M14.5 10h4M14.5 14h2.5" />
+  </Icon>
+);
+
+export const ClipboardCheckIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M9 4.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2h-2" />
+    <rect x="9" y="2.5" width="6" height="4" rx="1" />
+    <path d="m8.5 13 2.2 2.2L15.5 10" />
+  </Icon>
+);
+
+export const PaymentsIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M14.8 9.2a3.2 3.2 0 0 0-5.6 1.1c-.4 1.6.6 2.4 2.8 3 2.2.6 3.2 1.4 2.8 3a3.2 3.2 0 0 1-5.6 1.1M12 6.5v11" />
+  </Icon>
+);
+
+export const ReceiptIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M5 3.5h14v17l-2.3-1.6-2.4 1.6-2.3-1.6-2.4 1.6L7.3 18.9 5 20.5v-17Z" />
+    <path d="M9 8h6M9 12h6" />
+  </Icon>
+);
+
+export const PersonIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5 20v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1" />
+  </Icon>
+);
+
+export const EditNoteIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M4 6.5h7M4 11h5M4 15.5h5" />
+    <path d="M20.5 10.5V20H12l-1.6-4.4a1.5 1.5 0 0 1 1.2-2l3.2-.5 5-6.3a1.8 1.8 0 0 0-2.5-2.5l-6.3 5-.5 3.2" />
+  </Icon>
+);
+
+export const RosterIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <rect x="4" y="3" width="16" height="18" rx="2" />
+    <circle cx="10" cy="10" r="2.2" />
+    <path d="M6.8 16.5c.4-1.4 1.6-2.2 3.2-2.2s2.8.8 3.2 2.2M15.5 8.5h2.5M15.5 12h2.5" />
+  </Icon>
+);
+
+export const VerifiedIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M12 21s7-3.2 7-8.6V5.9L12 3 5 5.9v6.5C5 17.8 12 21 12 21Z" />
+    <path d="m8.8 11.8 2.2 2.2 4.2-4.2" />
+  </Icon>
+);
+
+/** The graduation cap in the wordmark tile. */
+export const CapIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="m12 4 9.5 4.2L12 12.4 2.5 8.2 12 4Z" />
+    <path d="M6.8 10.3v4.6c0 1.4 2.3 2.6 5.2 2.6s5.2-1.2 5.2-2.6v-4.6" />
+    <path d="M21.5 8.2v4.8" />
+  </Icon>
+);

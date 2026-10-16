@@ -1,17 +1,27 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
+/**
+ * `primary` is the forest anchor and is reserved for the one action a screen is
+ * about. `accent` is the emerald creation button the design system calls for
+ * direct-create actions, so a page with both reads clearly at a glance.
+ */
 const VARIANTS = {
-  primary: "bg-brand-600 text-white hover:bg-brand-700 focus-visible:outline-brand-600",
-  secondary: "bg-white text-ink ring-1 ring-line hover:bg-page focus-visible:outline-brand-600",
-  ghost: "bg-transparent text-body hover:bg-brand-50 hover:text-ink focus-visible:outline-brand-600",
+  primary:
+    "bg-primary text-on-primary hover:bg-primary-hover focus-visible:outline-primary",
+  accent: "bg-secondary text-white hover:bg-secondary-strong focus-visible:outline-secondary",
+  secondary:
+    "bg-white text-primary ring-1 ring-inset ring-line hover:bg-page focus-visible:outline-secondary",
+  ghost: "bg-transparent text-secondary hover:bg-brand-50 focus-visible:outline-secondary",
   danger: "bg-danger-600 text-white hover:bg-danger-600/90 focus-visible:outline-danger-600",
 };
 
+/* Heights hold a 44px touch target on the two sizes used most, so the buttons
+ * stay comfortable on a touchscreen without inflating the desktop toolbar. */
 const SIZES = {
-  sm: "h-8 px-3 text-sm gap-1.5",
-  md: "h-10 px-4 text-sm gap-2",
-  lg: "h-11 px-5 text-base gap-2",
+  sm: "h-9 px-3 text-[13px] gap-1.5 rounded-lg",
+  md: "h-11 px-4 text-sm gap-2 rounded-xl",
+  lg: "h-12 px-5 text-sm gap-2 rounded-xl",
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -19,6 +29,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: keyof typeof SIZES;
   isLoading?: boolean;
   leftIcon?: ReactNode;
+  rightIcon?: ReactNode;
 }
 
 export function Button({
@@ -26,6 +37,7 @@ export function Button({
   size = "md",
   isLoading = false,
   leftIcon,
+  rightIcon,
   className,
   disabled,
   type = "button",
@@ -38,7 +50,7 @@ export function Button({
       disabled={disabled || isLoading}
       aria-busy={isLoading || undefined}
       className={cn(
-        "inline-flex items-center justify-center rounded-lg font-medium transition-colors",
+        "inline-flex items-center justify-center font-semibold transition-colors",
         "focus-visible:outline-2 focus-visible:outline-offset-2",
         "disabled:cursor-not-allowed disabled:opacity-60",
         VARIANTS[variant],
@@ -49,6 +61,7 @@ export function Button({
     >
       {isLoading ? <Spinner /> : leftIcon}
       {children}
+      {rightIcon}
     </button>
   );
 }

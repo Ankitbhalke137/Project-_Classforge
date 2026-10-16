@@ -3,15 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { navForRole, schoolHref } from "@/lib/nav";
-import { useRole } from "@/lib/hooks";
-import { ACADEMIC_YEAR, currentTerm } from "@/lib/schedule";
+import { useRole, canPerform } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import { ShieldCheckIcon } from "@/components/ui/icons";
-import { ROLE_LABELS } from "@/types";
+import { HelpIcon, ShieldCheckIcon } from "@/components/ui/icons";
 
 /**
- * The sidebar only lists the screens this role is allowed to open, so a
- * teacher never sees a Students link and a student never sees Teachers.
+ * The left rail: brand, the school switcher, then the screens this role is
+ * allowed to open.
+ *
+ * Only role-permitted screens are listed, so a teacher never sees a Students
+ * link and a student never sees Teachers. The same table guards the URLs, so a
+ * hidden tab is also a blocked route.
  */
 export function Sidebar({
   schoolSlug,
@@ -25,21 +27,16 @@ export function Sidebar({
   const role = useRole();
   const items = navForRole(role);
 
-  const term = currentTerm(new Date());
-
   return (
-    <div className="flex flex-col justify-between gap-6 p-4">
+    <div className="flex h-full flex-col justify-between gap-6 overflow-y-auto p-4">
       <nav aria-label="Main" className="flex flex-col">
-        <p className="px-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-          Workspace
-        </p>
-        <p className="mt-0.5 px-3 text-sm font-semibold text-ink">
-          {role ? ROLE_LABELS[role] : "—"}
+        <p className="px-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+          Main navigation
         </p>
 
-        <ul className="mt-4 flex flex-col gap-1">
+        <ul className="mt-3 flex flex-col gap-0.5">
           {items.map((item) => {
-            const href = schoolHref(schoolSlug, item.area);
+            const href = schoolHref(schoolSlug, item);
             const isActive = pathname === href || pathname.startsWith(`${href}/`);
             const Icon = item.icon;
 
@@ -50,14 +47,23 @@ export function Sidebar({
                   onClick={onNavigate}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
                     isActive
-                      ? "bg-brand-100 text-brand-700"
-                      : "text-body hover:bg-brand-50 hover:text-ink",
+                      ? "bg-brand-50 font-semibold text-primary"
+                      : "font-medium text-body hover:bg-brand-50/60 hover:text-primary",
                   )}
                 >
-                  <Icon width={18} height={18} className="shrink-0" />
-                  {item.label}
+                  <Icon
+                    width={19}
+                    height={19}
+                    className={cn("shrink-0", isActive ? "text-secondary-strong" : "text-muted")}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.soon ? (
+                    <span className="shrink-0 rounded-full bg-surface-low px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      Soon
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             );
@@ -66,28 +72,32 @@ export function Sidebar({
 
         {items.length === 0 ? (
           <p className="px-3 py-2 text-xs text-body">
-            No screens are open to the {role ? ROLE_LABELS[role] : "current"} role yet.
+            No screens are open to this role yet.
           </p>
         ) : null}
       </nav>
 
-      <div className="flex flex-col gap-4">
-        <div className="rounded-xl bg-brand-50 p-4">
-          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-brand-600">
-            Academic year {ACADEMIC_YEAR.label}
-          </p>
-          <p className="mt-2 text-sm font-semibold text-ink">
-            {term.label} is {term.underway ? "underway" : "upcoming"}
-          </p>
-          <p className="mt-1 text-xs text-body">{term.range}</p>
-        </div>
-
-        {role === "TEACHER" ? (
+      <div className="flex flex-col gap-3">
+        {role === "TEACHER" || canPerform(role, "viewSchoolDashboard") ? (
           <p className="flex items-start gap-2 px-1 text-xs text-body">
-            <ShieldCheckIcon width={16} height={16} className="mt-0.5 shrink-0 text-brand-600" />
+            <ShieldCheckIcon width={16} height={16} className="mt-0.5 shrink-0 text-secondary" />
             Assigned-class access only
           </p>
         ) : null}
+
+        <p className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-body">
+          <HelpIcon width={19} height={19} className="shrink-0 text-muted" />
+          Help &amp; Support
+        </p>
+
+        <div className="rounded-2xl bg-surface-low p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-secondary-strong">
+            ClassForge mission
+          </p>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-body">
+            Better schools. Brighter futures.
+          </p>
+        </div>
       </div>
     </div>
   );

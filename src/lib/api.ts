@@ -243,11 +243,24 @@ export const schoolApi = {
   ) => api<Announcement>(`/api/t/${schoolSlug}/announcements`, { method: "POST", body }),
 
   /* --- Fees --- */
+  /**
+   * `email` tells the server who is asking. A guardian and a student reach this
+   * screen too, and the server narrows the ledger to their own records — the
+   * screen must not decide that for itself.
+   */
   listFees: (
     schoolSlug: string,
-    params: { page?: number; search?: string; status?: string; classId?: string; term?: string } = {},
+    params: {
+      page?: number;
+      search?: string;
+      status?: string;
+      classId?: string;
+      term?: string;
+      email?: string;
+    } = {},
   ) => api<Paginated<FeeInvoice>>(withQuery(`/api/t/${schoolSlug}/fees`, params)),
-  getFeeSummary: (schoolSlug: string) => api<FeeSummary>(`/api/t/${schoolSlug}/fees/summary`),
+  getFeeSummary: (schoolSlug: string, email?: string) =>
+    api<FeeSummary>(withQuery(`/api/t/${schoolSlug}/fees/summary`, { email })),
 
   /* --- Roll-up for the dashboard --- */
   getDashboard: (schoolSlug: string) => api<SchoolDashboard>(`/api/t/${schoolSlug}/dashboard`),

@@ -40,6 +40,8 @@ import type {
   AttendanceTrendPoint,
   Exam,
   ExamResult,
+  FeeInvoice,
+  FeeSummary,
   Grade,
   Paginated,
   Parent,
@@ -473,6 +475,48 @@ function termTotal(slug: string, studentId: string, term: string): number | null
 /* ------------------------------------------------------------------ *
  * School handlers
  * ------------------------------------------------------------------ */
+
+/**
+ * Which students a caller may read fee records for, or null when they may read
+ * every invoice.
+ *
+ * A school admin reads the whole ledger. A guardian reads only their children and
+ * a student only themselves — `SCHOOL_AREAS.fees` opens the screen to both, so the
+ * scoping has to happen here rather than in the nav.
+ */
+function feeScope(email: string | undefined): Set<string> | null {
+  const account = email ? ACCOUNTS[email] : undefined;
+  if (!account) return new Set<string>();
+
+  if (account.schools.some((school) => school.role === "SCHOOL_ADMIN")) return null;
+
+  if (account.person.parentId) {
+    return new Set(childrenOf(account.person.parentId).map((child) => child.id));
+  }
+
+  if (account.person.studentId) return new Set([account.person.studentId]);
+
+  return new Set<string>();
+}
+
+/** Recomputes the summary from the invoices the caller can actually see. */
+function summaryOf(invoices: FeeInvoice[]): FeeSummary {
+  const totalBilled = invoices.reduce((sum, invoice) => sum + invoice.amount, 0);
+  const totalCollected = invoices.reduce((sum, invoice) => sum + invoice.amountPaid, 0);
+  const overdue = invoices.filter((invoice) => invoice.status === "OVERDUE");
+
+  return {
+    totalBilled,
+    totalCollected,
+    outstanding: totalBilled - totalCollected,
+    overdueAmount: overdue.reduce(
+      (sum, invoice) => sum + invoice.amount - invoice.amountPaid,
+      0,
+    ),
+    overdueCount: overdue.length,
+    collectionRate: totalBilled === 0 ? 0 : Math.round((totalCollected / totalBilled) * 100),
+  };
+}
 
 function schoolHandlers(slug: string) {
   /** 404s for an unknown tenant, mirroring how the real API would behave. */
@@ -1090,12 +1134,14 @@ function schoolHandlers(slug: string) {
       const term = filterParam(url, "term");
       const classId = filterParam(url, "classId");
       const search = filterParam(url, "search") ?? "";
+      const scope = feeScope(filterParam(url, "email"));
 
       const classNameOf = new Map(
         (STUDENTS[slug] ?? []).map((student) => [student.id, student.classId]),
       );
 
       const rows = (FEES[slug] ?? [])
+        .filter((invoice) => !scope || scope.has(invoice.studentId))
         .filter(
           (invoice) =>
             (!status || invoice.status === status) &&
@@ -1114,18 +1160,20 @@ function schoolHandlers(slug: string) {
       return HttpResponse.json(pageOf(rows, url));
     }),
 
-    http.get(`/api/t/${slug}/fees/summary`, () =>
-      HttpResponse.json(
-        FEE_SUMMARY[slug] ?? {
-          totalBilled: 0,
-          totalCollected: 0,
-          outstanding: 0,
-          overdueAmount: 0,
-          overdueCount: 0,
-          collectionRate: 0,
-        },
-      ),
-    ),
+    http.get(`/api/t/${slug}/fees/summary`, ({ request }) => {
+      if (!known()) return notFound("That school");
+
+      const scope = feeScope(filterParam(new URL(request.url), "email"));
+
+      // A school-wide caller gets the fixture roll-up; anyone narrower has it
+      // recomputed from just the invoices they are allowed to read.
+      if (scope === null) {
+        return HttpResponse.json(FEE_SUMMARY[slug] ?? summaryOf(FEES[slug] ?? []));
+      }
+
+      const visible = (FEES[slug] ?? []).filter((invoice) => scope.has(invoice.studentId));
+      return HttpResponse.json(summaryOf(visible));
+    }),
 
     /* --- Dashboard --- */
 

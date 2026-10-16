@@ -1,17 +1,23 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Status pills: tinted fill, matching label, fully rounded, no border.
+ *
+ * `brand` and `green` are deliberately the same — they were two names for the
+ * affirmative state before the design system named it. `indigo` stays as an
+ * alias so screens not yet moved off it keep typechecking.
+ */
 const TONES = {
-  neutral: "bg-brand-50 text-body ring-brand-200",
-  brand: "bg-brand-100 text-brand-700 ring-brand-200",
-  green: "bg-brand-50 text-brand-700 ring-brand-200",
-  amber: "bg-amber-50 text-amber-700 ring-amber-200",
-  red: "bg-danger-50 text-danger-600 ring-danger-200",
-  /**
-   * Deprecated alias for `brand`, kept so screens that have not been moved off
-   * the old indigo naming still typecheck. Remove once none are left.
-   */
-  indigo: "bg-brand-100 text-brand-700 ring-brand-200",
+  neutral: "bg-surface-low text-body",
+  brand: "bg-brand-50 text-secondary-strong",
+  green: "bg-brand-50 text-secondary-strong",
+  amber: "bg-warn-50 text-warn-600",
+  warning: "bg-warn-50 text-warn-600",
+  red: "bg-danger-50 text-danger-600",
+  negative: "bg-danger-50 text-danger-600",
+  positive: "bg-brand-50 text-secondary-strong",
+  indigo: "bg-brand-50 text-secondary-strong",
 };
 
 export function Badge({
@@ -26,7 +32,8 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
+        "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1",
+        "text-[11px] font-semibold uppercase tracking-[0.03em]",
         TONES[tone],
         className,
       )}
@@ -36,17 +43,19 @@ export function Badge({
   );
 }
 
-const SIZES = { sm: "size-7 text-[11px]", md: "size-9 text-xs", lg: "size-10 text-sm" };
+const SIZES = { sm: "size-7 text-[11px]", md: "size-9 text-xs", lg: "size-11 text-sm" };
 
 /** Initials tile. `shape="square"` matches the school switcher chip. */
 export function Avatar({
   name,
   size = "md",
   shape = "circle",
+  className,
 }: {
   name: string;
   size?: keyof typeof SIZES;
   shape?: "circle" | "square";
+  className?: string;
 }) {
   const initials =
     name
@@ -60,9 +69,10 @@ export function Avatar({
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center bg-brand-100 font-semibold text-brand-700",
+        "inline-flex shrink-0 items-center justify-center bg-primary font-bold text-white",
         SIZES[size],
-        shape === "circle" ? "rounded-full" : "rounded-lg",
+        shape === "circle" ? "rounded-full" : "rounded-xl",
+        className,
       )}
     >
       {initials}

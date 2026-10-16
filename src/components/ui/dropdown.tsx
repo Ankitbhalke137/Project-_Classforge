@@ -18,11 +18,16 @@ export function Dropdown({
   items,
   label,
   align = "right",
+  className,
+  block = false,
 }: {
   trigger: ReactNode;
   items: DropdownItem[];
   label: string;
   align?: "left" | "right";
+  className?: string;
+  /** Stretch to the container's width — used by the sidebar's school switcher. */
+  block?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,13 +53,17 @@ export function Dropdown({
   }, [open]);
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className={cn("relative", block && "w-full", className)}>
       <button
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+        className={cn(
+          "flex items-center gap-2 rounded-xl text-left",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary",
+          block && "w-full",
+        )}
       >
         {trigger}
       </button>
@@ -65,7 +74,7 @@ export function Dropdown({
           role="menu"
           aria-label={label}
           className={cn(
-            "absolute z-40 mt-2 min-w-56 overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-line",
+            "absolute z-40 mt-2 min-w-56 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-float",
             align === "right" ? "right-0" : "left-0",
           )}
         >
@@ -82,7 +91,7 @@ export function Dropdown({
             >
               {item.icon}
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-ink">{item.label}</span>
+                <span className="block truncate font-medium text-primary">{item.label}</span>
                 {item.description ? (
                   <span className="block truncate text-xs text-body">{item.description}</span>
                 ) : null}

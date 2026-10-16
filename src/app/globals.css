@@ -1,32 +1,80 @@
 @import "tailwindcss";
 
 /*
- * ClassForge palette, sampled from the approved mockups so the UI and the
- * design files stay in step. Greens are the brand; the greys are a green-leaning
- * neutral ramp rather than plain slate, which is what keeps the product feeling
- * like one thing.
+ * Heritage Emerald — the ClassForge design system.
+ *
+ * Two colour engines do the work:
+ *   - `primary` (deep forest #0f382c) anchors navigation, primary buttons and
+ *     every metric heading. It is the institutional voice.
+ *   - `secondary` (emerald #059669) is the accent: positive trends, completion
+ *     states, active indicators. It never carries structural weight.
+ *
+ * Neutrals are a green-leaning ramp so the whole product reads as one thing.
+ * `brand-*` is kept as an alias of the emerald ramp because the screens that
+ * have not been moved to the new tokens yet still reference it.
  */
 @theme {
-  --color-brand-50: #edf2ec;
-  --color-brand-100: #e5eee4;
-  --color-brand-200: #cfddd1;
-  --color-brand-300: #a9bcaf;
-  --color-brand-400: #789784;
-  --color-brand-500: #4e755f;
-  --color-brand-600: #37634b;
-  --color-brand-700: #2d4f3b;
-  --color-brand-800: #243d2f;
+  /* ---- Forest: the institutional anchor ---- */
+  --color-primary: #0f382c;
+  --color-primary-hover: #064e3b;
+  --color-primary-soft: #c1ecda;
+  --color-primary-container: #0f382c;
+  --color-on-primary: #ffffff;
 
-  --color-ink: #242d28;
-  --color-body: #66716a;
-  --color-muted: #8c948f;
-  --color-line: #e6eae7;
-  --color-page: #fafbf9;
-  --color-panel: #edf2ec;
+  /* ---- Emerald: the accent engine ---- */
+  --color-secondary: #059669;
+  --color-secondary-strong: #047857;
+  --color-secondary-soft: #a7f3d0;
+  --color-secondary-container: #d1fae5;
+  --color-on-secondary-container: #00714e;
 
-  --color-danger-50: #fff5f3;
-  --color-danger-200: #f0cdc9;
-  --color-danger-600: #af3935;
+  /* ---- Emerald ramp, aliased as `brand-*` ---- */
+  --color-brand-50: #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-200: #a7f3d0;
+  --color-brand-300: #6ee7b7;
+  --color-brand-400: #10b981;
+  --color-brand-500: #059669;
+  --color-brand-600: #047857;
+  --color-brand-700: #065f46;
+  --color-brand-800: #064e3b;
+  --color-brand-900: #022c22;
+
+  /* ---- Neutral ramp ---- */
+  --color-ink: #141b2b;
+  --color-body: #414845;
+  --color-muted: #717975;
+  --color-line: #e2e8f0;
+  --color-page: #f8faf9;
+  --color-panel: #ecfdf5;
+
+  /* ---- Surfaces: cards are flat white, one step down for chips and tiles ---- */
+  --color-surface: #ffffff;
+  --color-surface-low: #f1f3ff;
+  --color-surface-mid: #e9edff;
+
+  /* ---- Semantic status signals ---- */
+  --color-danger-50: #fef2f2;
+  --color-danger-200: #fecaca;
+  --color-danger-600: #b91c1c;
+  --color-warn-50: #fffbeb;
+  --color-warn-200: #fde68a;
+  --color-warn-600: #b45309;
+  --color-info-50: #eff6ff;
+  --color-info-600: #1d4ed8;
+  --color-violet-50: #f5f3ff;
+  --color-violet-600: #7c3aed;
+
+  /* ---- Type ---- */
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+
+  /* ---- Shape: friendly rounding so dense tables do not feel clinical ---- */
+  --radius-card: 1.25rem;
+  --radius-panel: 0.75rem;
+
+  /* ---- Elevation carries a green undertone, never neutral black ---- */
+  --shadow-float: 0 4px 16px -2px rgb(15 56 44 / 0.08);
+  --shadow-sheet: 0 -8px 24px -4px rgb(15 56 44 / 0.12);
 }
 
 @layer base {
@@ -39,15 +87,88 @@
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-brand-600;
+    @apply outline-2 outline-offset-2 outline-secondary;
   }
 }
 
 @layer components {
-  /* The soft lift the cards and the sign-in card use across the product. */
+  /* The soft lift for sticky headers and floating controls. */
+  .shadow-float {
+    box-shadow: var(--shadow-float);
+  }
+
+  /* Cards rely on outline precision, so the default surface has no shadow. */
   .shadow-card {
-    box-shadow:
-      0 1px 2px rgb(36 45 40 / 0.04),
-      0 12px 32px -12px rgb(36 45 40 / 0.12);
+    box-shadow: var(--shadow-float);
+  }
+
+  /* Ambient motion for the campus scene. Slow and low-contrast on purpose —
+     * it sits behind the dashboard greeting and should never pull focus. */
+  .cf-cloud {
+    animation: cf-drift 16s ease-in-out infinite alternate;
+  }
+  .cf-flag {
+    transform-origin: 230px 22px;
+    animation: cf-wave 2.5s ease-in-out infinite alternate;
+  }
+  .cf-tree {
+    transform-origin: bottom center;
+    animation: cf-sway 4s ease-in-out infinite alternate;
+  }
+  .cf-sun {
+    transform-origin: 390px 30px;
+    animation: cf-pulse 6s ease-in-out infinite;
+  }
+}
+
+@keyframes cf-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(18px);
+  }
+}
+
+@keyframes cf-wave {
+  0% {
+    transform: rotate(0deg) skewY(0deg);
+  }
+  50% {
+    transform: rotate(4deg) skewY(3deg);
+  }
+  100% {
+    transform: rotate(-3deg) skewY(-2deg);
+  }
+}
+
+@keyframes cf-sway {
+  from {
+    transform: rotate(-1.5deg);
+  }
+  to {
+    transform: rotate(1.5deg);
+  }
+}
+
+@keyframes cf-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+/* Respect the OS setting rather than animating regardless. */
+@media (prefers-reduced-motion: reduce) {
+  .cf-cloud,
+  .cf-flag,
+  .cf-tree,
+  .cf-sun {
+    animation: none;
   }
 }

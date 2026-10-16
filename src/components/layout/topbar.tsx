@@ -3,7 +3,14 @@
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/badge";
 import { Dropdown } from "@/components/ui/dropdown";
-import { CheckIcon, ChevronDownIcon, LogoutIcon } from "@/components/ui/icons";
+import {
+  BellIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  LogoutIcon,
+  SchoolsIcon,
+  SearchIcon,
+} from "@/components/ui/icons";
 import { useMembership } from "@/lib/hooks";
 import { useAuth } from "@/store/auth";
 import { ROLE_LABELS } from "@/types";
@@ -23,14 +30,17 @@ export function SchoolSwitcher() {
     <Dropdown
       label="Switch school"
       align="left"
+      block
       trigger={
-        <span className="flex items-center gap-2.5 rounded-xl border border-line py-1.5 pl-1.5 pr-2.5 transition-colors hover:bg-brand-50">
-          <Avatar name={current?.schoolName ?? "—"} shape="square" />
-          <span className="hidden min-w-0 text-left sm:block">
-            <span className="block truncate text-sm font-semibold text-ink">
+        <span className="flex w-full items-center gap-2.5 rounded-xl bg-surface-low px-3 py-2.5 text-left transition-colors hover:bg-surface-mid">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white text-primary">
+            <SchoolsIcon width={17} height={17} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-semibold text-primary">
               {current?.schoolName ?? "Select a school"}
             </span>
-            <span className="block truncate text-xs text-body">
+            <span className="block truncate text-[11px] font-medium text-body">
               {current ? ROLE_LABELS[current.role] : ""}
             </span>
           </span>
@@ -44,10 +54,45 @@ export function SchoolSwitcher() {
         onSelect: () => router.push(`/${school.schoolSlug}/dashboard`),
         trailing:
           school.schoolId === current?.schoolId ? (
-            <CheckIcon width={16} height={16} className="shrink-0 text-brand-600" />
+            <CheckIcon width={16} height={16} className="shrink-0 text-secondary" />
           ) : null,
       }))}
     />
+  );
+}
+
+/**
+ * The school-wide search box.
+ *
+ * A plain GET form rather than a JS-driven index: it submits to the students
+ * roster with the query in the URL, so the result is linkable and works without
+ * JavaScript. Widening it to teachers and classes needs a search endpoint that
+ * does not exist yet, so it is scoped to the roster for now.
+ */
+export function GlobalSearch({ schoolSlug }: { schoolSlug: string }) {
+  return (
+    <form
+      action={`/${schoolSlug}/students`}
+      method="get"
+      role="search"
+      className="relative w-full max-w-md"
+    >
+      <label htmlFor="global-search" className="sr-only">
+        Search students
+      </label>
+      <SearchIcon
+        width={18}
+        height={18}
+        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted"
+      />
+      <input
+        id="global-search"
+        name="search"
+        type="search"
+        placeholder="Search students, teachers, classes…"
+        className="h-11 w-full rounded-full border border-transparent bg-surface-low pl-11 pr-4 text-sm text-ink placeholder:text-muted focus:border-secondary focus:bg-white focus:outline-none focus:ring-2 focus:ring-secondary-soft"
+      />
+    </form>
   );
 }
 
@@ -63,15 +108,14 @@ export function UserMenu() {
     <Dropdown
       label="Account menu"
       trigger={
-        <span className="flex items-center gap-2.5 rounded-lg p-1 transition-colors hover:bg-brand-50">
+        <span className="flex items-center gap-2.5 rounded-xl p-1 transition-colors hover:bg-brand-50">
           <Avatar name={user.name} />
           <span className="hidden text-left sm:block">
-            <span className="block text-sm font-semibold text-ink">{user.name}</span>
-            <span className="block text-xs text-body">
+            <span className="block text-[13px] font-semibold text-primary">{user.name}</span>
+            <span className="block text-[11px] font-medium text-body">
               {membership ? ROLE_LABELS[membership.role] : "Platform"}
             </span>
           </span>
-          <ChevronDownIcon width={16} height={16} className="text-muted" />
         </span>
       }
       items={[
@@ -98,5 +142,18 @@ export function UserMenu() {
         },
       ]}
     />
+  );
+}
+
+/** Bell with an unread dot. The panel itself is out of scope for this screen. */
+export function NotificationsBell() {
+  return (
+    <span className="relative flex size-10 items-center justify-center rounded-xl text-body">
+      <BellIcon width={20} height={20} />
+      <span
+        aria-label="Unread notifications"
+        className="absolute right-2 top-2 size-2 rounded-full bg-danger-600 ring-2 ring-white"
+      />
+    </span>
   );
 }
