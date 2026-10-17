@@ -4,18 +4,22 @@ import { EmptyState, PageHeader } from "@/components/ui/states";
 import type { SchoolArea } from "@/lib/roles";
 
 /**
- * A screen whose design has not arrived from the UI team yet. The route, the
- * guard and the role check are already in place, so the Figma screen only has
- * to be dropped in here.
+ * A screen whose design has not landed yet.
+ *
+ * The route, the guard and the role check are already in place, so the finished
+ * screen only has to be dropped into `children` — nothing else needs to move.
  */
 export function ComingSoon({
   area,
   title,
   description,
+  note,
 }: {
   area: SchoolArea;
   title: string;
   description: string;
+  /** Why this screen is still a placeholder, stated for the reader. */
+  note?: string;
 }) {
   return (
     <RequireArea area={area}>
@@ -23,8 +27,8 @@ export function ComingSoon({
         <PageHeader title={title} description={description} />
         <Card>
           <EmptyState
-            title="Screen awaiting the UI team's design"
-            description="The route, the guard and the role check are in place. The Figma screen drops in here."
+            title="This screen is on its way"
+            description={note ?? "The route, the guard and the role check are in place."}
           />
         </Card>
       </div>

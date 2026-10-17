@@ -50,32 +50,37 @@ export function Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
-      <div className="absolute inset-0 bg-slate-900/50" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-ink/50" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className={`relative w-full ${SIZES[size]} rounded-t-2xl bg-white shadow-xl outline-none sm:rounded-2xl`}
+        // The panel is capped to the viewport and the body scrolls inside it, so a
+        // long screen — a class with a roster and a timetable — never runs off the
+        // bottom. Header and footer stay put while the middle moves.
+        className={`relative flex max-h-[92vh] w-full flex-col ${SIZES[size]} rounded-t-2xl bg-white shadow-xl outline-none sm:max-h-[88vh] sm:rounded-2xl`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-            {description ? <p className="mt-0.5 text-sm text-slate-500">{description}</p> : null}
+            <h2 className="text-base font-semibold text-ink">{title}</h2>
+            {description ? <p className="mt-0.5 text-sm text-body">{description}</p> : null}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded-md p-1 text-muted hover:bg-brand-50 hover:text-ink"
           >
             <CloseIcon />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="overflow-y-auto px-5 py-4">{children}</div>
         {footer ? (
-          <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">{footer}</div>
+          <div className="flex shrink-0 justify-end gap-2 border-t border-line px-5 py-4">
+            {footer}
+          </div>
         ) : null}
       </div>
     </div>
@@ -117,7 +122,7 @@ export function ConfirmModal({
         </>
       }
     >
-      <p className="text-sm text-slate-600">{message}</p>
+      <p className="text-sm text-body">{message}</p>
     </Modal>
   );
 }

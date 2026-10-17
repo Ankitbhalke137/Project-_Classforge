@@ -1,28 +1,58 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export function Card({ className, children }: { className?: string; children: ReactNode }) {
+/**
+ * The standard surface: flat white, 1px outline, generous rounding.
+ *
+ * Cards lean on outline precision rather than drop shadows — a dense admin table
+ * turns clinical fast under heavy elevation. Only floating chrome lifts.
+ */
+export function Card({
+  className,
+  children,
+}: {
+  className?: string;
+  children?: ReactNode;
+}) {
   return (
-    <div className={cn("rounded-xl bg-white ring-1 ring-slate-200 shadow-sm", className)}>
+    <div className={cn("rounded-2xl border border-line bg-white", className)}>
       {children}
     </div>
   );
 }
 
+/**
+ * A card header with an optional accent glyph, matching the icon-and-title pairs
+ * the dashboard and directory screens use throughout.
+ */
 export function CardHeader({
   title,
   description,
   action,
+  icon,
+  className,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
+  icon?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
-      <div>
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-        {description ? <p className="mt-0.5 text-sm text-slate-500">{description}</p> : null}
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4",
+        className,
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        {icon ? <span className="shrink-0 text-secondary">{icon}</span> : null}
+        <div className="min-w-0">
+          <h2 className="text-[17px] font-semibold leading-tight tracking-tight text-primary">
+            {title}
+          </h2>
+          {description ? <p className="mt-0.5 text-[13px] text-body">{description}</p> : null}
+        </div>
       </div>
       {action}
     </div>
@@ -34,29 +64,67 @@ export function CardBody({ className, children }: { className?: string; children
 }
 
 const TONES = {
-  default: "text-slate-900",
-  positive: "text-emerald-600",
-  warning: "text-amber-600",
-  negative: "text-red-600",
+  default: "text-primary",
+  positive: "text-secondary-strong",
+  warning: "text-warn-600",
+  negative: "text-danger-600",
 };
 
-/** One number with a label. Used on the dashboard and the platform overview. */
+/**
+ * One number with a label, a tint chip and an optional micro-chart.
+ *
+ * Used across the dashboards and the platform overview. `spark` draws the trend
+ * line inside the card rather than below it, which is what keeps a row of four
+ * metrics scannable at a glance.
+ */
 export function StatCard({
   label,
   value,
   hint,
   tone = "default",
+  icon,
+  chip,
+  spark,
 }: {
   label: string;
   value: string | number;
   hint?: string;
   tone?: keyof typeof TONES;
+  icon?: ReactNode;
+  /** Small tinted pill under the metric, e.g. "+2.4% vs last term". */
+  chip?: ReactNode;
+  spark?: ReactNode;
 }) {
   return (
-    <Card className="px-5 py-4">
-      <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className={cn("mt-1 text-2xl font-semibold", TONES[tone])}>{value}</p>
-      {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
+    <Card className="p-4">
+      <div className="flex items-start gap-3">
+        {icon ? (
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary-container text-on-secondary-container">
+            {icon}
+          </span>
+        ) : null}
+
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-muted">{label}</p>
+          <p
+            className={cn(
+              "mt-0.5 text-[28px] font-bold leading-tight tracking-tight",
+              TONES[tone],
+            )}
+          >
+            {value}
+          </p>
+        </div>
+      </div>
+
+      {chip || spark ? (
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-2">
+          <span className="min-w-0 truncate">{chip}</span>
+          {spark}
+        </div>
+      ) : null}
+
+      {hint ? <p className="mt-2 text-xs text-body">{hint}</p> : null}
     </Card>
   );
 }

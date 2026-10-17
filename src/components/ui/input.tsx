@@ -4,8 +4,13 @@ import { useId } from "react";
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
+/**
+ * 48px control height, white fill, 1px `#e2e8f0` outline, rounded-xl. Focus moves
+ * the border to emerald and adds a soft outer ring, so keyboard focus is obvious
+ * on a long form without a heavy outline.
+ */
 const CONTROL =
-  "w-full rounded-lg bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 ring-1 ring-slate-300 focus:outline-2 focus:outline-offset-1 focus:outline-indigo-600 disabled:bg-slate-50 aria-[invalid=true]:ring-red-500";
+  "w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft disabled:bg-page aria-[invalid=true]:border-danger-600 aria-[invalid=true]:ring-danger-200";
 
 /** Label + control + error message. Shared by Input and Select. */
 function Field({
@@ -25,17 +30,17 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-sm font-medium text-slate-700">
+      <label htmlFor={htmlFor} className="text-sm font-medium text-primary">
         {label}
-        {required ? <span className="ml-0.5 text-red-600">*</span> : null}
+        {required ? <span className="ml-0.5 text-danger-600">*</span> : null}
       </label>
       {children}
       {error ? (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger-600">
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-slate-500">{hint}</p>
+        <p className="text-xs text-body">{hint}</p>
       ) : null}
     </div>
   );
@@ -45,20 +50,35 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string;
   error?: string;
   hint?: string;
+  /** Sits inside the control on the trailing edge, e.g. a show/hide toggle. */
+  endAdornment?: ReactNode;
 }
 
-export function Input({ label, error, hint, className, id, ...props }: InputProps) {
+export function Input({
+  label,
+  error,
+  hint,
+  endAdornment,
+  className,
+  id,
+  ...props
+}: InputProps) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
 
   return (
     <Field label={label} htmlFor={inputId} error={error} hint={hint} required={props.required}>
-      <input
-        id={inputId}
-        aria-invalid={error ? true : undefined}
-        className={cn(CONTROL, className)}
-        {...props}
-      />
+      <div className="relative">
+        <input
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          className={cn(CONTROL, endAdornment ? "pr-11" : null, className)}
+          {...props}
+        />
+        {endAdornment ? (
+          <div className="absolute inset-y-0 right-0 flex items-center pr-3">{endAdornment}</div>
+        ) : null}
+      </div>
     </Field>
   );
 }
