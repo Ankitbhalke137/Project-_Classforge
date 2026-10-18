@@ -485,3 +485,57 @@ export const CapIcon = (props: SVGProps<SVGSVGElement>) => (
     <path d="M21.5 8.2v4.8" />
   </Icon>
 );
+
+export const SlidersIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />
+  </Icon>
+);
+
+export const ClockIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 6v6l4 2" />
+  </Icon>
+);
+
+export const TrophyIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2" />
+    <path d="M4 3h16v6a8 8 0 0 1-16 0V3ZM12 17v4M8 21h8" />
+  </Icon>
+);
+
+export const SparklesIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" />
+  </Icon>
+);
+
+export const PrinterIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <rect x="6" y="14" width="12" height="8" rx="1" />
+  </Icon>
+);
+
+export const SendIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="m22 2-7 20-4-9-9-4Z" />
+    <path d="M22 2 11 13" />
+  </Icon>
+);
+
+export const DocumentReportIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+  </Icon>
+);
+
+export const PresentationChartIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <rect x="2" y="3" width="20" height="14" rx="2" />
+    <path d="M8 21h8M12 17v4M7 10l3-3 2 2 5-5" />
+  </Icon>
+);
