@@ -52,6 +52,14 @@ export interface Student {
   admissionNo: string;
   className: string;
   status: "ACTIVE" | "INACTIVE";
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string | null;
+  classId?: string | null;
+  sectionId?: string | null;
+  sectionName?: string | null;
+  academicYearId?: string | null;
+  createdAt?: string;
 }
 
 export interface Teacher {
