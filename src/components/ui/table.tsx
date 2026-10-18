@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode, ThHTMLAttributes, TdHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 export function Table({ children, className }: { children: ReactNode; className?: string }) {
@@ -11,40 +11,65 @@ export function Table({ children, className }: { children: ReactNode; className?
 
 export function THead({ children }: { children: ReactNode }) {
   return (
-    <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+    <thead className="border-b border-line bg-page text-xs uppercase tracking-wide text-body">
       {children}
     </thead>
   );
 }
 
 export function TBody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-slate-100">{children}</tbody>;
+  return <tbody className="divide-y divide-line">{children}</tbody>;
 }
 
-export function TR({ children }: { children: ReactNode }) {
-  return <tr className="hover:bg-slate-50">{children}</tr>;
-}
-
-export function TH({ children, className }: { children: ReactNode; className?: string }) {
+/** Takes className and the usual row props, so a row can be clickable. */
+export function TR({
+  children,
+  className,
+  ...props
+}: HTMLAttributes<HTMLTableRowElement> & { children: ReactNode }) {
   return (
-    <th scope="col" className={cn("px-4 py-3 font-medium whitespace-nowrap", className)}>
+    <tr className={cn("hover:bg-page", className)} {...props}>
+      {children}
+    </tr>
+  );
+}
+
+export function TH({
+  children,
+  className,
+  ...props
+}: ThHTMLAttributes<HTMLTableCellElement> & { children: ReactNode }) {
+  return (
+    <th
+      scope="col"
+      className={cn("px-4 py-3 font-medium whitespace-nowrap", className)}
+      {...props}
+    >
       {children}
     </th>
   );
 }
 
-export function TD({ children, className }: { children: ReactNode; className?: string }) {
-  return <td className={cn("px-4 py-3 text-slate-700", className)}>{children}</td>;
+export function TD({
+  children,
+  className,
+  ...props
+}: TdHTMLAttributes<HTMLTableCellElement> & { children: ReactNode }) {
+  return (
+    <td className={cn("px-4 py-3 text-ink", className)} {...props}>
+      {children}
+    </td>
+  );
 }
 
 /** Placeholder rows while a table's data is loading. */
 export function TableSkeleton({ rows = 6, columns = 4 }: { rows?: number; columns?: number }) {
   return (
-    <div className="divide-y divide-slate-100">
+    <div className="divide-y divide-line">
       {Array.from({ length: rows }, (_, row) => (
         <div key={row} className="flex items-center gap-4 px-4 py-3">
           {Array.from({ length: columns }, (_, column) => (
-            <div key={column} className="h-4 flex-1 animate-pulse rounded bg-slate-200" />
+            <div key={column} className="h-4 flex-1 animate-pulse rounded bg-brand-100" />
           ))}
         </div>
       ))}

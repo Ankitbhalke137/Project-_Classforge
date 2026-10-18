@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { RequireArea } from "@/components/auth/guards";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -12,10 +13,28 @@ import { schoolApi } from "@/lib/api";
 import { useApi, useMembership } from "@/lib/hooks";
 import type { Student } from "@/types";
 
+/**
+ * The roster.
+ *
+ * `useSearchParams` is what lets the topbar's school-wide search land here with
+ * a query already applied, so the split keeps the Suspense boundary as narrow as
+ * the hook actually requires.
+ */
 export default function StudentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <StudentsRoster />
+    </Suspense>
+  );
+}
+
+function StudentsRoster() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
+  const searchParams = useSearchParams();
+  const urlSearch = searchParams.get("search") ?? "";
+
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(urlSearch);
 
   const { data, loading, error } = useApi(
     () => schoolApi.listStudents(schoolSlug, { page, search }),
@@ -26,16 +45,17 @@ export default function StudentsPage() {
     <RequireArea area="students">
       <div className="space-y-6">
         <PageHeader
-          title="Students"
+          eyebrow="Enrolment & records"
+          title="Students directory"
           description="Server-paginated roster with search. Filters move into the URL once the designs land."
         />
 
         <Card>
-          <div className="border-b border-slate-200 p-4">
+          <div className="border-b border-line p-4">
             <Input
               label="Search"
               type="search"
-              placeholder="Search by name or class"
+              placeholder="Search by name, admission no. or class"
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
@@ -46,9 +66,9 @@ export default function StudentsPage() {
 
           {loading ? (
             <TableSkeleton rows={6} columns={4} />
-          ) : error || !data ? (
-            <p className="px-4 py-10 text-center text-sm text-slate-500">
-              Could not load the roster.
+          ) : error || !data || data.data.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-body">
+              {error ? "Could not load the roster." : "No students match this search."}
             </p>
           ) : (
             <>
@@ -80,8 +100,8 @@ function StudentRow({ student }: { student: Student }) {
   return (
     <TR>
       <TD>
-        <span className="font-medium text-slate-900">{student.name}</span>
-        <span className="block text-xs text-slate-500">{student.email}</span>
+        <span className="font-semibold text-primary">{student.name}</span>
+        <span className="block text-xs text-body">{student.email}</span>
       </TD>
       <TD>{student.admissionNo}</TD>
       <TD>{student.className}</TD>

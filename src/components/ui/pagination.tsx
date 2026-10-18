@@ -18,8 +18,8 @@ export function PaginationBar({
   const lastRow = Math.min(page * pageSize, total);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3">
-      <p className="text-sm text-slate-600">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
+      <p className="text-sm text-body">
         Showing {formatNumber(firstRow)}–{formatNumber(lastRow)} of {formatNumber(total)}
       </p>
       <div className="flex items-center gap-2">
@@ -31,7 +31,7 @@ export function PaginationBar({
         >
           Previous
         </Button>
-        <span className="text-sm text-slate-600">
+        <span className="text-sm text-body">
           Page {page} of {lastPage}
         </span>
         <Button

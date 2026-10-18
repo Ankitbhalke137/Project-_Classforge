@@ -41,7 +41,7 @@ export function RequireSuperAdmin({ children }: { children: ReactNode }) {
 
   if (!user?.isSuperAdmin) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
+      <div className="min-h-screen bg-page p-6">
         <Card className="mx-auto max-w-lg">
           <ForbiddenState />
         </Card>
@@ -85,7 +85,7 @@ export function RequireSchoolMember({ children }: { children: ReactNode }) {
 
   if (!membership) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
+      <div className="min-h-screen bg-page p-6">
         <Card className="mx-auto max-w-lg">
           <ForbiddenState schoolName={schoolSlug ?? undefined} />
         </Card>
