@@ -52,7 +52,7 @@ export const SCHOOL_NAV: NavItem[] = [
   { label: "Reports", area: "report-cards", path: "reports", icon: ReportsIcon, soon: true },
   { label: "Fees", area: "fees", icon: FeesIcon },
   { label: "Announcements", area: "announcements", icon: AnnouncementsIcon },
-  { label: "Settings", area: "settings", icon: SettingsIcon, soon: true },
+  { label: "Settings", area: "settings", icon: SettingsIcon },
 ];
 
 /**
