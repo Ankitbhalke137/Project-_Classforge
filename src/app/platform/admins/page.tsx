@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Avatar, Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import { Input, Select } from "@/components/ui/input";
 import { ConfirmModal, Modal } from "@/components/ui/modal";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { Table, TBody, TD, TH, THead, TR, TableSkeleton } from "@/components/ui/table";
+import { SearchIcon, ShieldCheckIcon } from "@/components/ui/icons";
 import { ApiError, platformApi } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
 import type { CreatedPlatformAdmin, PlatformAdmin, School, StaffRole } from "@/types";
@@ -22,15 +24,70 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   TEACHER: "Teacher",
 };
 
+type RoleFilter = "ALL" | StaffRole;
+type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
+
 export default function PlatformAdminsPage() {
+  // useSearchParams needs a Suspense boundary during static rendering.
+  return (
+    <Suspense fallback={<TableSkeleton rows={5} columns={5} />}>
+      <PlatformAdminsContent />
+    </Suspense>
+  );
+}
+
+function PlatformAdminsContent() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const schoolParam = params.get("school") ?? "";
+  const addParam = params.get("add") === "1";
+
   const admins = useApi(() => platformApi.listAdmins(), []);
   const schools = useApi(() => platformApi.listSchools(), []);
-  const [addOpen, setAddOpen] = useState(false);
+
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [addOpen, setAddOpen] = useState(addParam);
   const [removing, setRemoving] = useState<PlatformAdmin | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const rows = admins.data ?? [];
+  const query = search.trim().toLowerCase();
+  const focusedSchool = schools.data?.find((school) => school.id === schoolParam) ?? null;
+
+  const filtered = rows.filter((row) => {
+    const matchesSchool = schoolParam === "" || row.tenantId === schoolParam;
+    const matchesRole = roleFilter === "ALL" || row.role === roleFilter;
+    const matchesStatus = statusFilter === "ALL" || row.status === statusFilter;
+    const matchesQuery =
+      query === "" ||
+      row.name.toLowerCase().includes(query) ||
+      row.email.toLowerCase().includes(query) ||
+      row.schoolName.toLowerCase().includes(query);
+    return matchesSchool && matchesRole && matchesStatus && matchesQuery;
+  });
+
+  const activeSchoolAdmins = rows.filter(
+    (row) => row.role === "SCHOOL_ADMIN" && row.status === "ACTIVE",
+  ).length;
+  const activeTeachers = rows.filter(
+    (row) => row.role === "TEACHER" && row.status === "ACTIVE",
+  ).length;
+
+  function clearSchoolFilter() {
+    router.replace("/platform/admins");
+  }
+
+  function closeAddModal() {
+    setAddOpen(false);
+    // Drop `add=1` so a refresh does not reopen a form that was already sent.
+    if (addParam) {
+      const query = schoolParam ? `?school=${encodeURIComponent(schoolParam)}` : "";
+      router.replace(`/platform/admins${query}`);
+    }
+  }
 
   async function changeRole(row: PlatformAdmin, role: StaffRole) {
     setPendingKey(`${row.userId}:${row.tenantId}`);
@@ -79,8 +136,40 @@ export default function PlatformAdminsPage() {
         eyebrow="Platform console / Access"
         title="School admins"
         description="Give one person staff access to one school, change their role, or deactivate them. Accounts are created immediately; email delivery is not connected yet, so you pass the first password on yourself."
-        action={<Button onClick={() => setAddOpen(true)}>Add school admin</Button>}
+        action={<Button onClick={() => setAddOpen(true)}>Invite school admin</Button>}
       />
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="p-4">
+          <p className="text-[13px] font-medium text-muted">Active school admins</p>
+          <p className="mt-0.5 text-[28px] font-bold leading-tight text-primary">
+            {admins.loading ? "—" : activeSchoolAdmins}
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-[13px] font-medium text-muted">Active teachers</p>
+          <p className="mt-0.5 text-[28px] font-bold leading-tight text-primary">
+            {admins.loading ? "—" : activeTeachers}
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-[13px] font-medium text-muted">Total staff memberships</p>
+          <p className="mt-0.5 text-[28px] font-bold leading-tight text-primary">
+            {admins.loading ? "—" : rows.length}
+          </p>
+        </Card>
+      </div>
+
+      {focusedSchool ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-100 bg-brand-50 px-4 py-3">
+          <p className="text-sm text-secondary-strong">
+            Showing access for <strong>{focusedSchool.name}</strong>
+          </p>
+          <Button variant="secondary" size="sm" onClick={clearSchoolFilter}>
+            Show all schools
+          </Button>
+        </div>
+      ) : null}
 
       {actionError ? (
         <p className="rounded-xl border border-danger-100 bg-danger-50 px-4 py-3 text-sm text-danger-600">
@@ -89,6 +178,50 @@ export default function PlatformAdminsPage() {
       ) : null}
 
       <Card>
+        <div className="flex flex-col gap-3 border-b border-line px-4 py-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <SearchIcon
+              width={16}
+              height={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by name, email or school…"
+              aria-label="Search school admins"
+              className="w-full rounded-xl border border-line bg-white py-2.5 pl-9 pr-3 text-sm text-ink placeholder:text-muted focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft"
+            />
+          </div>
+
+          <select
+            aria-label="Filter by role"
+            value={roleFilter}
+            onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
+            className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft"
+          >
+            <option value="ALL">All roles</option>
+            <option value="SCHOOL_ADMIN">School Admin</option>
+            <option value="TEACHER">Teacher</option>
+          </select>
+
+          <select
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+            className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft"
+          >
+            <option value="ALL">All statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+
+          <Button variant="secondary" onClick={admins.reload} isLoading={admins.loading}>
+            Refresh
+          </Button>
+        </div>
+
         {admins.loading ? (
           <TableSkeleton rows={5} columns={5} />
         ) : admins.error || !admins.data ? (
@@ -100,9 +233,27 @@ export default function PlatformAdminsPage() {
           </div>
         ) : rows.length === 0 ? (
           <EmptyState
-            title="No school admins yet"
-            description="Add the first person who will administer a school. You can change their role or deactivate them at any time."
-            action={<Button onClick={() => setAddOpen(true)}>Add school admin</Button>}
+            title="No staff access yet"
+            description="Invite the first School Admin. They are the only role that can run a school, including inviting its staff."
+            action={<Button onClick={() => setAddOpen(true)}>Invite school admin</Button>}
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title="No people match those filters"
+            description="Try another name, role, status or school."
+            action={
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSearch("");
+                  setRoleFilter("ALL");
+                  setStatusFilter("ALL");
+                  if (schoolParam) clearSchoolFilter();
+                }}
+              >
+                Clear filters
+              </Button>
+            }
           />
         ) : (
           <Table>
@@ -116,7 +267,7 @@ export default function PlatformAdminsPage() {
               </TR>
             </THead>
             <TBody>
-              {rows.map((row) => {
+              {filtered.map((row) => {
                 const key = `${row.userId}:${row.tenantId}`;
                 const busy = pendingKey === key;
 
@@ -186,7 +337,10 @@ export default function PlatformAdminsPage() {
 
       <Card>
         <div className="px-5 py-4">
-          <h2 className="text-sm font-semibold text-primary">What each role can do</h2>
+          <div className="flex items-center gap-2">
+            <ShieldCheckIcon width={18} height={18} className="text-secondary" />
+            <h2 className="text-sm font-semibold text-primary">What each role can do</h2>
+          </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-line bg-page px-4 py-3">
               <p className="text-sm font-medium text-ink">School Admin</p>
@@ -203,13 +357,19 @@ export default function PlatformAdminsPage() {
               </p>
             </div>
           </div>
+          <p className="mt-3 text-xs text-muted">
+            A person may hold a different role in another school. Only the role for the school
+            they are currently in applies.
+          </p>
         </div>
       </Card>
 
       <AddAdminModal
+        key={schoolParam}
         open={addOpen}
         schools={schools.data ?? []}
-        onClose={() => setAddOpen(false)}
+        initialSchoolId={schoolParam}
+        onClose={closeAddModal}
         onCreated={() => admins.reload()}
       />
 
@@ -233,17 +393,19 @@ export default function PlatformAdminsPage() {
 function AddAdminModal({
   open,
   schools,
+  initialSchoolId,
   onClose,
   onCreated,
 }: {
   open: boolean;
   schools: School[];
+  initialSchoolId: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [schoolId, setSchoolId] = useState("");
+  const [schoolId, setSchoolId] = useState(initialSchoolId);
   const [role, setRole] = useState<StaffRole>("SCHOOL_ADMIN");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -253,7 +415,7 @@ function AddAdminModal({
   function reset() {
     setName("");
     setEmail("");
-    setSchoolId("");
+    setSchoolId(initialSchoolId);
     setRole("SCHOOL_ADMIN");
     setError(null);
     setBusy(false);
@@ -289,9 +451,13 @@ function AddAdminModal({
 
   async function copyPassword() {
     if (!created?.temporaryPassword) return;
-    await navigator.clipboard.writeText(created.temporaryPassword);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(created.temporaryPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard access can be blocked; the password is still on screen.
+    }
   }
 
   const schoolOptions = schools.map((school) => ({ value: school.id, label: school.name }));
@@ -300,7 +466,7 @@ function AddAdminModal({
     <Modal
       open={open}
       onClose={close}
-      title={created ? "Account created" : "Add school admin"}
+      title={created ? "Access created" : "Invite school admin"}
       description={
         created
           ? undefined
@@ -320,7 +486,7 @@ function AddAdminModal({
               isLoading={busy}
               disabled={schools.length === 0}
             >
-              Create account
+              Create access
             </Button>
           </>
         )
@@ -396,7 +562,7 @@ function AddAdminModal({
             options={[{ value: "", label: "Choose a school" }, ...schoolOptions]}
             hint={
               schools.length === 0
-                ? "No schools exist yet. Create a school before adding an admin."
+                ? "No schools exist yet. Provision a school before inviting an admin."
                 : undefined
             }
           />
@@ -407,6 +573,11 @@ function AddAdminModal({
             onChange={(event) => setRole(event.target.value as StaffRole)}
             options={ROLE_OPTIONS}
           />
+          <p className="rounded-xl bg-surface-low px-3 py-2.5 text-xs leading-relaxed text-body">
+            {role === "SCHOOL_ADMIN"
+              ? "A School Admin can run everything inside this one school, including inviting its staff."
+              : "A Teacher only works with the classes they are assigned to. They cannot change school settings."}
+          </p>
           {error ? <p className="text-sm text-danger-600">{error}</p> : null}
         </form>
       )}

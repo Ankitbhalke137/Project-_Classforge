@@ -114,8 +114,10 @@ export const platformApi = {
   listSchools: () => api<School[]>("/api/platform/schools"),
   createSchool: (name: string, slug: string) =>
     api<School>("/api/platform/schools", { method: "POST", body: { name, slug } }),
-  setSchoolStatus: (schoolSlug: string, status: School["status"]) =>
-    api<School>(`/api/platform/schools/${schoolSlug}`, { method: "PATCH", body: { status } }),
+  updateSchool: (
+    schoolId: string,
+    body: { name?: string; slug?: string; status?: School["status"] },
+  ) => api<School>(`/api/platform/schools/${schoolId}`, { method: "PATCH", body }),
   stats: () => api<PlatformStats>("/api/platform/stats"),
 
   /* Staff access — who administers each school. */
