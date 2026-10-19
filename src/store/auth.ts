@@ -1,19 +1,15 @@
+
 "use client";
 
 import { create } from "zustand";
-import { api, authApi, MOCKS_ENABLED } from "@/lib/api";
+import { authApi, MOCKS_ENABLED } from "@/lib/api";
 import type { Membership, User } from "@/types";
-
-// sessionStorage, not localStorage: closing the tab signs you out.
-const STORAGE_KEY = "classforge.session";
 
 interface AuthState {
   user: User | null;
   schools: Membership[];
-  /** False until sessionStorage has been read. Guards wait for this. */
   ready: boolean;
-
-  restore: () => void;
+  restore: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -23,33 +19,50 @@ export const useAuth = create<AuthState>((set) => ({
   schools: [],
   ready: false,
 
-  // Called once on app start, before any guard makes a decision.
-  restore: () => {
-    const saved = sessionStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const { user, schools } = JSON.parse(saved);
-      set({ user, schools });
+  restore: async () => {
+    try {
+      if (MOCKS_ENABLED) {
+        set({ ready: true });
+        return;
+      }
+
+      const session = await authApi.me();
+
+      set({
+        user: session.user,
+        schools: session.schools,
+        ready: true,
+      });
+    } catch {
+      set({
+        user: null,
+        schools: [],
+        ready: true,
+      });
     }
-    set({ ready: true });
   },
 
   login: async (email, password) => {
     const result = await authApi.login(email, password);
-    sessionStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ user: result.user, schools: result.schools }),
-    );
-    set({ user: result.user, schools: result.schools });
+
+    set({
+      user: result.user,
+      schools: result.schools,
+      ready: true,
+    });
   },
 
   logout: async () => {
-  try {
-    if (!MOCKS_ENABLED) {
-      await api("/api/auth/logout", { method: "POST" });
+    try {
+      if (!MOCKS_ENABLED) {
+        await authApi.logout();
+      }
+    } finally {
+      set({
+        user: null,
+        schools: [],
+        ready: true,
+      });
     }
-  } finally {
-    sessionStorage.removeItem(STORAGE_KEY);
-    set({ user: null, schools: [], ready: true });
-  }
-},
+  },
 }));
