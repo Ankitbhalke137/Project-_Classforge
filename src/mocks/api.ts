@@ -138,10 +138,10 @@ function mineScope(email: string | null): ((assignment: Assignment) => boolean) 
   const self = account.person.studentId
     ? STUDENT_BY_ID.get(account.person.studentId)
     : undefined;
-  if (self) classIds.add(self.classId);
+  if (self?.classId) classIds.add(self.classId);
 
   for (const child of account.person.parentId ? childrenOf(account.person.parentId) : []) {
-    classIds.add(child.classId);
+    if (child.classId) classIds.add(child.classId);
   }
 
   const teacherId = account.person.teacherId;
@@ -560,7 +560,7 @@ function schoolHandlers(slug: string) {
       return HttpResponse.json({
         student,
         guardian,
-        class: CLASS_BY_ID.get(student.classId) ?? null,
+        class: student.classId ? CLASS_BY_ID.get(student.classId) ?? null : null,
         homeroomTeacher: student.classId
           ? TEACHER_BY_ID.get(CLASS_BY_ID.get(student.classId)?.homeroomTeacherId ?? "") ?? null
           : null,
