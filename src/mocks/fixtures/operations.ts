@@ -139,7 +139,7 @@ export function buildFees(
   for (const student of students) {
     if (student.status === "INACTIVE") continue;
 
-    const tuition = TUITION_BY_GRADE[student.grade] ?? 20_000;
+    const tuition = student.grade ? TUITION_BY_GRADE[student.grade] ?? 20_000 : 20_000;
 
     for (const [termIndex, term] of TERMS.entries()) {
       const charges: { feeType: (typeof FEE_TYPES)[number]; amount: number }[] = [

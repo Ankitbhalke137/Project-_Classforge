@@ -71,18 +71,26 @@ export interface Student {
   admissionNo: string;
   className: string;
   status: "ACTIVE" | "INACTIVE";
-  /** Foreign key to SchoolClass. className stays for table cells and exports. */
-  classId: string;
-  grade: string;
-  section: string;
-  gender: Gender;
-  dateOfBirth: string;
-  phone: string;
-  address: string;
-  bloodGroup: string;
-  /** Who to call. Null only for students whose guardian record is missing. */
-  parentId: string | null;
-  admittedOn: string;
+  // CRUD/API fields
+  firstName?: string;
+  lastName?: string;
+  classId?: string | null;
+  sectionId?: string | null;
+  sectionName?: string | null;
+  academicYearId?: string | null;
+  dateOfBirth?: string | null;
+  createdAt?: string;
+  enrolmentStatus?: string | null;
+
+  // Existing remote/mock fields
+  grade?: string;
+  section?: string;
+  gender?: Gender;
+  phone?: string;
+  address?: string;
+  bloodGroup?: string;
+  parentId?: string | null;
+  admittedOn?: string;
 }
 
 export interface Teacher {
