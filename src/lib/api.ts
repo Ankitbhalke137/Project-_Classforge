@@ -97,7 +97,7 @@ export async function api<T>(
 
 export const authApi = {
   login: (email: string, password: string) =>
-    api<{ token: string; user: User; schools: Membership[] }>("/api/auth/login", {
+    api<{ user: User; schools: Membership[] }>("/api/auth/login", {
       method: "POST",
       body: { email, password },
     }),
