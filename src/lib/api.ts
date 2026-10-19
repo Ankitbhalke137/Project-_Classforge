@@ -31,15 +31,14 @@ import type {
 } from "@/types";
 
 /* ------------------------------------------------------------------ *
- * Mock switch
+ * Base URL
  *
- * Mocks stand in for the backend until it is live. Requests then stay on
- * the current origin so the mock service worker can intercept them.
+ * The API routes live inside this Next app, so requests go to this origin by
+ * default. Set NEXT_PUBLIC_API_BASE_URL only if the API is ever split onto its
+ * own host.
  * ------------------------------------------------------------------ */
 
-export const MOCKS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCKS !== "false";
-
-const BASE_URL = MOCKS_ENABLED ? "" : (process.env.NEXT_PUBLIC_API_BASE_URL ?? "");
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 /* ------------------------------------------------------------------ *
  * The one fetch helper
@@ -96,6 +95,10 @@ export async function api<T>(
  * ------------------------------------------------------------------ */
 
 export const authApi = {
+  /**
+   * The backend hands the access token back as an httpOnly cookie, not in the
+   * body — so there is no `token` field here to read.
+   */
   login: (email: string, password: string) =>
     api<{ user: User; schools: Membership[] }>("/api/auth/login", {
       method: "POST",

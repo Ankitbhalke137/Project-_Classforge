@@ -25,7 +25,7 @@ import { FullPageLoader } from "@/components/ui/states";
 import { schoolApi } from "@/lib/api";
 import { useApi, useMembership, useRole } from "@/lib/hooks";
 import { canPerform } from "@/lib/roles";
-import { schoolHref } from "@/lib/nav";
+import { schoolHref, schoolHrefForArea } from "@/lib/nav";
 import { ACADEMIC_YEAR, currentTerm, periodTime } from "@/lib/schedule";
 import { useAuth } from "@/store/auth";
 import { ANNOUNCEMENT_PRIORITIES, type SchoolDashboard } from "@/types";
@@ -473,7 +473,7 @@ function QuickActions({
     },
     {
       label: "Generate report",
-      href: schoolHref(schoolSlug, "report-cards"),
+      href: schoolHrefForArea(schoolSlug, "report-cards"),
       icon: <ReportsIcon width={20} height={20} />,
       tint: "bg-warn-50 text-warn-600",
       arrow: "text-warn-600",

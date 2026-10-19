@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "prisma generate || echo 'prisma generate skipped - set DATABASE_URL first'",
     "db:generate": "prisma generate",
     "db:status": "prisma migrate status",
     "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio"
   },
@@ -18,7 +20,6 @@
     "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.7",
     "jose": "^6.2.12",
-    "msw": "^3.0.3",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -36,10 +37,5 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5"
-  },
-  "msw": {
-    "workerDirectory": [
-      "public"
-    ]
   }
 }

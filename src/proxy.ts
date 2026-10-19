@@ -5,14 +5,11 @@ const PUBLIC_PATHS = ["/login", "/no-access"];
 /**
  * Server-side redirect for signed-out users, checked before any page renders.
  *
- * While the mock API is on there is no cookie yet (the demo keeps the session
- * in sessionStorage), so the guards in `components/auth/guards.tsx` do the
- * redirect instead. Once the real backend sets its HTTP-only cookie this takes
- * over and no protected screen flashes before the login page.
+ * The backend sets an httpOnly cookie on sign-in, so this is the first gate: no
+ * protected screen ever flashes before the login page. The client-side guards in
+ * `components/auth/guards.tsx` then keep the session in step.
  */
 export function proxy(request: NextRequest) {
-  if (process.env.NEXT_PUBLIC_ENABLE_MOCKS !== "false") return NextResponse.next();
-
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
 
@@ -29,6 +26,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|mockServiceWorker.js|.*\\.(?:svg|png|jpg|jpeg|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp)$).*)",
   ],
 };

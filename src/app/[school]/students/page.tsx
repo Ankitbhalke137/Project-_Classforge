@@ -101,7 +101,11 @@ function StudentRow({ student }: { student: Student }) {
     <TR>
       <TD>
         <span className="font-semibold text-primary">{student.name}</span>
-        <span className="block text-xs text-body">{student.email}</span>
+        {/* Not every student has an email on file, so fall back to something
+            the school would recognise rather than leaving a blank line. */}
+        <span className="block text-xs text-body">
+          {student.email || `Roll ${student.admissionNo}`}
+        </span>
       </TD>
       <TD>{student.admissionNo}</TD>
       <TD>{student.className}</TD>

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { AlertIcon, EyeIcon, EyeOffIcon, ShieldCheckIcon } from "@/components/ui/icons";
 import { ApiError } from "@/lib/api";
 import { landingPath } from "@/lib/nav";
-import { ACCOUNTS, DEMO_PASSWORD } from "@/mocks/data";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/lib/demo-accounts";
 import { useAuth } from "@/store/auth";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -237,7 +237,7 @@ function DemoAccounts({ onPick }: { onPick: (email: string) => void }) {
       </summary>
 
       <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-        {Object.entries(ACCOUNTS).map(([accountEmail, account]) => (
+        {Object.entries(DEMO_ACCOUNTS).map(([accountEmail, label]) => (
           <li key={accountEmail}>
             <button
               type="button"
@@ -245,7 +245,7 @@ function DemoAccounts({ onPick }: { onPick: (email: string) => void }) {
               className="w-full rounded-lg border border-line bg-white p-2.5 text-left transition-colors hover:border-brand-300 hover:bg-brand-50"
             >
               <span className="block truncate text-xs font-medium text-ink">{accountEmail}</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-body">{account.label}</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-body">{label}</span>
             </button>
           </li>
         ))}

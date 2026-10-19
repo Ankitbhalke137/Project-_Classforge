@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { api, authApi, MOCKS_ENABLED } from "@/lib/api";
+import { api, authApi } from "@/lib/api";
 import type { Membership, User } from "@/types";
 
 // sessionStorage, not localStorage: closing the tab signs you out.
@@ -44,9 +44,7 @@ export const useAuth = create<AuthState>((set) => ({
 
   logout: async () => {
   try {
-    if (!MOCKS_ENABLED) {
-      await api("/api/auth/logout", { method: "POST" });
-    }
+    await api("/api/auth/logout", { method: "POST" });
   } finally {
     sessionStorage.removeItem(STORAGE_KEY);
     set({ user: null, schools: [], ready: true });
