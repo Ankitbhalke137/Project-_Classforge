@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate || echo 'prisma generate skipped - set DATABASE_URL first'",
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:status": "prisma migrate status",
     "db:migrate": "prisma migrate dev",

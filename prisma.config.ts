@@ -1,7 +1,16 @@
-
 import "dotenv/config";
-import { defineConfig, env } from "prisma/config";
+import { defineConfig } from "prisma/config";
 
+/**
+ * `prisma generate` only reads `schema.prisma` — it never opens a connection, so
+ * it must not require DATABASE_URL. A fresh clone or a CI build would otherwise
+ * fail before it generated the client, and every `import … from
+ * "@prisma/client"` downstream would break with a confusing "no exported member"
+ * error instead of the one line that actually matters.
+ *
+ * Commands that do connect — `migrate`, `db seed` — still need the variable;
+ * Prisma reports that itself, at the point of use.
+ */
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
@@ -10,6 +19,6 @@ export default defineConfig({
   },
   engine: "classic",
   datasource: {
-    url: env("DATABASE_URL"),
+    url: process.env.DATABASE_URL ?? "",
   },
 });
