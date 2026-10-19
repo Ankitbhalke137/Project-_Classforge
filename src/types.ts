@@ -59,6 +59,30 @@ export interface PlatformStats {
   tenantLimit: number;
 }
 
+/* ---------- Platform access ---------- */
+
+/** The staff roles a Super Admin can assign. Students come from a roster. */
+export const STAFF_ROLES = ["SCHOOL_ADMIN", "TEACHER"] as const;
+export type StaffRole = (typeof STAFF_ROLES)[number];
+
+/** One person's staff access to one school. A membership is this pair. */
+export interface PlatformAdmin {
+  userId: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  role: StaffRole;
+  status: "ACTIVE" | "INACTIVE";
+  schoolId: string;
+  schoolName: string;
+  schoolSlug: string;
+}
+
+/** The create response, with the one-time password when the account is new. */
+export interface CreatedPlatformAdmin extends PlatformAdmin {
+  temporaryPassword: string | null;
+}
+
 /* ---------- People inside a school ---------- */
 
 export const GENDERS = ["FEMALE", "MALE", "OTHER"] as const;

@@ -10,10 +10,14 @@ import { formatNumber } from "@/lib/utils";
 
 export default function PlatformOverviewPage() {
   const { data, loading } = useApi(() => platformApi.listSchools(), []);
+  const admins = useApi(() => platformApi.listAdmins(), []);
 
   const schools = data ?? [];
   const activeSchools = schools.filter((school) => school.status === "ACTIVE");
   const totalStudents = schools.reduce((sum, school) => sum + school.studentCount, 0);
+  const schoolAdminCount = (admins.data ?? []).filter(
+    (membership) => membership.role === "SCHOOL_ADMIN" && membership.status === "ACTIVE",
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -21,18 +25,27 @@ export default function PlatformOverviewPage() {
         title="Platform overview"
         description="Cross-tenant view for the Super Admin. It creates and suspends schools but never reads a school's student data."
         action={
-          <Link href="/platform/schools">
-            <Button variant="secondary">Manage schools</Button>
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/platform/admins">
+              <Button variant="secondary">School admins</Button>
+            </Link>
+            <Link href="/platform/schools">
+              <Button variant="secondary">Manage schools</Button>
+            </Link>
+          </div>
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Schools" value={loading ? "—" : formatNumber(schools.length)} />
         <StatCard
           label="Active"
           value={loading ? "—" : formatNumber(activeSchools.length)}
           tone="positive"
+        />
+        <StatCard
+          label="Active school admins"
+          value={admins.loading ? "—" : formatNumber(schoolAdminCount)}
         />
         <StatCard
           label="Students across schools"

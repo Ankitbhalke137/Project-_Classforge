@@ -14,12 +14,15 @@ import type {
   FeeSummary,
   Paginated,
   Parent,
+  PlatformAdmin,
   PlatformStats,
+  CreatedPlatformAdmin,
   ReportCard,
   School,
   SchoolClass,
   SchoolDashboard,
   SchoolIdentity,
+  StaffRole,
   Student,
   StudentAttendance,
   Subject,
@@ -114,6 +117,24 @@ export const platformApi = {
   setSchoolStatus: (schoolSlug: string, status: School["status"]) =>
     api<School>(`/api/platform/schools/${schoolSlug}`, { method: "PATCH", body: { status } }),
   stats: () => api<PlatformStats>("/api/platform/stats"),
+
+  /* Staff access — who administers each school. */
+  listAdmins: () => api<PlatformAdmin[]>("/api/platform/admins"),
+  createAdmin: (body: {
+    name: string;
+    email: string;
+    schoolId: string;
+    role: StaffRole;
+  }) => api<CreatedPlatformAdmin>("/api/platform/admins", { method: "POST", body }),
+  updateAdmin: (
+    userId: string,
+    body: { tenantId: string; role?: StaffRole; status?: "ACTIVE" | "INACTIVE" },
+  ) => api<PlatformAdmin>(`/api/platform/admins/${userId}`, { method: "PATCH", body }),
+  removeAdmin: (userId: string, tenantId: string) =>
+    api<{ removed: boolean }>(
+      `/api/platform/admins/${userId}?tenantId=${encodeURIComponent(tenantId)}`,
+      { method: "DELETE" },
+    ),
 };
 
 export type ListParams = Record<string, string | number | undefined>;

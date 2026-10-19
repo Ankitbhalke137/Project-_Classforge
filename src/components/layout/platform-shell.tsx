@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/brand/logo";
 import { NotificationsBell, UserMenu } from "@/components/layout/topbar";
-import { SchoolsIcon } from "@/components/ui/icons";
+import { SchoolsIcon, ShieldCheckIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -15,7 +15,10 @@ import { cn } from "@/lib/utils";
  */
 export function PlatformShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const links = [{ label: "Schools & tenants", href: "/platform/schools", icon: SchoolsIcon }];
+  const links = [
+    { label: "Schools & tenants", href: "/platform/schools", icon: SchoolsIcon },
+    { label: "School admins", href: "/platform/admins", icon: ShieldCheckIcon },
+  ];
 
   return (
     <div className="flex min-h-screen bg-page">
