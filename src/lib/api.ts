@@ -14,12 +14,16 @@ import type {
   FeeSummary,
   Paginated,
   Parent,
+  PlatformAdmin,
   PlatformStats,
+  CreatedPlatformAdmin,
   ReportCard,
   School,
+  SchoolCalendar,
   SchoolClass,
   SchoolDashboard,
   SchoolIdentity,
+  StaffRole,
   Student,
   StudentAttendance,
   Subject,
@@ -28,18 +32,19 @@ import type {
   TimetableSlot,
   User,
   Membership,
+  NotificationPreferences,
 } from "@/types";
 
 /* ------------------------------------------------------------------ *
- * Mock switch
+ * Base URL
  *
- * Mocks stand in for the backend until it is live. Requests then stay on
- * the current origin so the mock service worker can intercept them.
+ * The API routes live inside this Next app, so requests go to this origin by
+ * default. Set NEXT_PUBLIC_API_BASE_URL only if the API is ever split onto its
+ * own host.
  * ------------------------------------------------------------------ */
 
 export const MOCKS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCKS !== "false";
-
-const BASE_URL = MOCKS_ENABLED ? "" : (process.env.NEXT_PUBLIC_API_BASE_URL ?? "");
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 /* ------------------------------------------------------------------ *
  * The one fetch helper
@@ -96,8 +101,12 @@ export async function api<T>(
  * ------------------------------------------------------------------ */
 
 export const authApi = {
+  /**
+   * The backend hands the access token back as an httpOnly cookie, not in the
+   * body — so there is no `token` field here to read.
+   */
   login: (email: string, password: string) =>
-    api<{ token: string; user: User; schools: Membership[] }>("/api/auth/login", {
+    api<{ user: User; schools: Membership[] }>("/api/auth/login", {
       method: "POST",
       body: { email, password },
     }),
@@ -108,9 +117,34 @@ export const platformApi = {
   listSchools: () => api<School[]>("/api/platform/schools"),
   createSchool: (name: string, slug: string) =>
     api<School>("/api/platform/schools", { method: "POST", body: { name, slug } }),
-  setSchoolStatus: (schoolSlug: string, status: School["status"]) =>
-    api<School>(`/api/platform/schools/${schoolSlug}`, { method: "PATCH", body: { status } }),
+  updateSchool: (
+    schoolId: string,
+    body: { name?: string; slug?: string; status?: School["status"] },
+  ) => api<School>(`/api/platform/schools/${schoolId}`, { method: "PATCH", body }),
+  removeSchool: (schoolId: string, force = false) =>
+    api<{ removed: boolean; id: string }>(
+      `/api/platform/schools/${schoolId}${force ? "?force=true" : ""}`,
+      { method: "DELETE" },
+    ),
   stats: () => api<PlatformStats>("/api/platform/stats"),
+
+  /* Staff access — who administers each school. */
+  listAdmins: () => api<PlatformAdmin[]>("/api/platform/admins"),
+  createAdmin: (body: {
+    name: string;
+    email: string;
+    schoolId: string;
+    role: StaffRole;
+  }) => api<CreatedPlatformAdmin>("/api/platform/admins", { method: "POST", body }),
+  updateAdmin: (
+    userId: string,
+    body: { tenantId: string; role?: StaffRole; status?: "ACTIVE" | "INACTIVE" },
+  ) => api<PlatformAdmin>(`/api/platform/admins/${userId}`, { method: "PATCH", body }),
+  removeAdmin: (userId: string, tenantId: string) =>
+    api<{ removed: boolean }>(
+      `/api/platform/admins/${userId}?tenantId=${encodeURIComponent(tenantId)}`,
+      { method: "DELETE" },
+    ),
 };
 
 export type ListParams = Record<string, string | number | undefined>;
@@ -317,6 +351,38 @@ export const schoolApi = {
     schoolSlug: string,
     body: Pick<Announcement, "title" | "body" | "audience" | "priority"> & { pinned?: boolean },
   ) => api<Announcement>(`/api/t/${schoolSlug}/announcements`, { method: "POST", body }),
+
+  /* --- Invites --- */
+  /** Adds a person to this school and emails them a temporary password. */
+  invite: (
+    schoolSlug: string,
+    body: { name: string; email: string; role: "TEACHER" | "STUDENT" },
+  ) =>
+    api<{
+      userId: string;
+      name: string;
+      email: string;
+      role: string;
+      schoolName: string;
+      temporaryPassword: string | null;
+      emailSent: boolean;
+    }>(`/api/t/${schoolSlug}/invite`, { method: "POST", body }),
+
+  /* --- Calendar --- */
+  /** This school's academic year, terms and timetable. */
+  getCalendar: (schoolSlug: string) => api<SchoolCalendar>(`/api/t/${schoolSlug}/calendar`),
+
+  /* --- Notification preferences --- */
+  getNotificationPreferences: (schoolSlug: string) =>
+    api<NotificationPreferences>(`/api/t/${schoolSlug}/notification-preferences`),
+  saveNotificationPreferences: (
+    schoolSlug: string,
+    body: NotificationPreferences,
+  ) =>
+    api<NotificationPreferences>(`/api/t/${schoolSlug}/notification-preferences`, {
+      method: "PUT",
+      body,
+    }),
 
   /* --- Fees --- */
   /**

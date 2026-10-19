@@ -57,7 +57,10 @@ export async function POST(request:Request){
       schoolId: memberships.tenant.id,
       schoolSlug : memberships.tenant.slug,
       schoolName : memberships.tenant.name,
-      role : memberships.role
+      role : memberships.role,
+      // The client reads this to decide whether the school is read-only. Without
+      // it a suspended school looks writable.
+      status : memberships.tenant.status
     }));
 
     const isSuperAdmin = user.platformRole === "SUPER_ADMIN";

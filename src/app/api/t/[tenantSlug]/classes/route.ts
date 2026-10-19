@@ -63,14 +63,33 @@ export async function GET(request: NextRequest, context: RouteContext) {
       });
     });
 
-    return NextResponse.json({
-      data: classes.map((c) => ({
-        id: c.id,
-        name: c.name,
-        academicYear: c.academicYear,
-        sections: c.sections,
-      })),
+    // Flattened to one row per class *section*, because that is what the app calls
+    // a class: "Grade 6 - A" is a section, not a whole grade.
+    //
+    // The response is a plain array because `listClasses` in `lib/api.ts` is typed
+    // `Promise<SchoolClass[]>`. It was returning `{ data: [...] }`, so every
+    // caller that did `.map` or `.reduce` on the result threw.
+    const data = classes.flatMap((schoolClass) => {
+      // A class with no sections still belongs on the roster.
+      const sections = schoolClass.sections.length
+        ? schoolClass.sections
+        : [{ id: schoolClass.id, name: "" }];
+
+      return sections.map((section) => ({
+        id: section.id,
+        name: section.name ? `${schoolClass.name} - ${section.name}` : schoolClass.name,
+        grade: schoolClass.name,
+        section: section.name,
+        // No column exists for these yet.
+        room: "",
+        homeroomTeacherId: null,
+        subjectIds: [] as string[],
+        studentCount: 0,
+        capacity: 0,
+      }));
     });
+
+    return NextResponse.json(data);
   } catch (error) {
     return handleApiError(error);
   }

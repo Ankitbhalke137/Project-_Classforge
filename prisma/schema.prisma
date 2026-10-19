@@ -42,6 +42,9 @@ model Tenant {
   exams Exam[]
   marks         Mark[]
   announcements Announcement[]
+  academicTerms AcademicTerm[]
+  timetablePeriods TimetablePeriod[]
+  notificationPreferences NotificationPreference[]
 
   @@map("tenants")
 }
@@ -63,6 +66,7 @@ model User {
   attendanceMarked AttendanceRecord[]
   gradedMarks   Mark[]
   announcements Announcement[]
+  notificationPreferences NotificationPreference[]
 
   @@map("users")
 }
@@ -79,6 +83,28 @@ model Membership {
   @@id([tenantId, userId])
   @@index([userId, status])
   @@map("memberships")
+}
+
+/**
+ * What one person wants to hear about, inside one school. Every member has a
+ * row here, so the settings screen shows the person's own choices rather than a
+ * set of switches that reset on reload.
+ */
+model NotificationPreference {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @map("tenant_id") @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  inAppNotifications  Boolean  @default(true) @map("in_app_notifications")
+  emailNotifications  Boolean  @default(false) @map("email_notifications")
+  classAnnouncements  Boolean  @default(true) @map("class_announcements")
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("notification_preferences")
 }
 
 
@@ -101,11 +127,56 @@ model AcademicYear {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   classes SchoolClass[]
   enrolments Enrolment[]
+  terms AcademicTerm[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])
   @@index([tenantId, status])
   @@map("academic_years")
+}
+
+/**
+ * One term inside an academic year — Term 1, Term 2, and so on. Each school
+ * decides its own dates, so the terms live in the database rather than in a
+ * constant in the code.
+ */
+model AcademicTerm {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  label          String   @db.VarChar(50)
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  position       Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [tenantId, academicYearId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, academicYearId, label])
+  @@index([tenantId, academicYearId, position])
+  @@map("academic_terms")
+}
+
+/**
+ * One teaching period in a school's timetable. The wall-clock times belong to
+ * the school, so they are stored per tenant instead of being hardcoded.
+ */
+model TimetablePeriod {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  period    Int
+  startTime String   @map("start_time") @db.VarChar(5)
+  endTime   String   @map("end_time") @db.VarChar(5)
+  label     String?  @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, period])
+  @@index([tenantId])
+  @@map("timetable_periods")
 }
 
 

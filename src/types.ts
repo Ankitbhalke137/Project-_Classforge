@@ -59,6 +59,68 @@ export interface PlatformStats {
   tenantLimit: number;
 }
 
+/**
+ * What one person wants to hear about, inside one school.
+ */
+export interface NotificationPreferences {
+  inAppNotifications: boolean;
+  emailNotifications: boolean;
+  classAnnouncements: boolean;
+}
+
+/**
+ * A school's own academic calendar — the year, its terms and its timetable.
+ * Each school keeps its own, so nothing here is assumed.
+ */
+export interface SchoolCalendar {
+  academicYear: {
+    name: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  } | null;
+  terms: {
+    label: string;
+    startDate: string;
+    endDate: string;
+    position: number;
+  }[];
+  periods: {
+    period: number;
+    startTime: string;
+    endTime: string;
+    label: string;
+  }[];
+  /** The gaps between the periods, worked out from the times. */
+  breaks: string;
+}
+
+/* ---------- Platform access ---------- */
+
+/** The staff roles a Super Admin can assign. Students come from a roster. */
+export const STAFF_ROLES = ["SCHOOL_ADMIN", "TEACHER"] as const;
+export type StaffRole = (typeof STAFF_ROLES)[number];
+
+/** One person's staff access to one school. A membership is this pair. */
+export interface PlatformAdmin {
+  userId: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  role: StaffRole;
+  status: "ACTIVE" | "INACTIVE";
+  schoolId: string;
+  schoolName: string;
+  schoolSlug: string;
+}
+
+/** The create response, with the one-time password when the account is new. */
+export interface CreatedPlatformAdmin extends PlatformAdmin {
+  temporaryPassword: string | null;
+  /** True when the invite email with the temporary password went out. */
+  emailSent: boolean;
+}
+
 /* ---------- People inside a school ---------- */
 
 export const GENDERS = ["FEMALE", "MALE", "OTHER"] as const;
@@ -82,7 +144,8 @@ export interface Student {
   createdAt?: string;
   enrolmentStatus?: string | null;
 
-  // Existing remote/mock fields
+  // Fields the API may not have a column behind yet — they come back empty
+  // rather than being invented.
   grade?: string;
   section?: string;
   gender?: Gender;
