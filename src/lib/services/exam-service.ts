@@ -324,32 +324,39 @@ export async function saveExamMarks(
   }
 
   await prisma.$transaction(
-    input.records.map((record) =>
-      record.score === null
-        ? prisma.mark.deleteMany({ where: { tenantId, examId, studentId: record.studentId } })
-        : prisma.mark.upsert({
-            where: {
-              tenantId_examId_studentId: {
-                tenantId,
-                examId,
-                studentId: record.studentId,
-              },
-            },
-            create: {
+    async (tx) => {
+      for (const record of input.records) {
+        if (record.score === null) {
+          await tx.mark.deleteMany({
+            where: { tenantId, examId, studentId: record.studentId },
+          });
+          continue;
+        }
+
+        await tx.mark.upsert({
+          where: {
+            tenantId_examId_studentId: {
               tenantId,
               examId,
               studentId: record.studentId,
-              score: record.score,
-              remarks: record.remarks || null,
-              gradedBy: userId,
             },
-            update: {
-              score: record.score,
-              remarks: record.remarks || null,
-              gradedBy: userId,
-            },
-          }),
-    ),
+          },
+          create: {
+            tenantId,
+            examId,
+            studentId: record.studentId,
+            score: record.score,
+            remarks: record.remarks || null,
+            gradedBy: userId,
+          },
+          update: {
+            score: record.score,
+            remarks: record.remarks || null,
+            gradedBy: userId,
+          },
+        });
+      }
+    },
     { timeout: 25_000 },
   );
 

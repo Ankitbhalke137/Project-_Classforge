@@ -147,30 +147,32 @@ export async function POST(
     }
 
     await prisma.$transaction(
-      input.records.map((record) =>
-        prisma.attendanceRecord.upsert({
-          where: {
-            tenantId_sectionId_studentId_attendanceDate: {
+      async (tx) => {
+        for (const record of input.records) {
+          await tx.attendanceRecord.upsert({
+            where: {
+              tenantId_sectionId_studentId_attendanceDate: {
+                tenantId: tenant.id,
+                sectionId: input.classId,
+                studentId: record.studentId,
+                attendanceDate: day,
+              },
+            },
+            create: {
               tenantId: tenant.id,
               sectionId: input.classId,
               studentId: record.studentId,
               attendanceDate: day,
+              status: record.status,
+              markedBy: membership.userId,
             },
-          },
-          create: {
-            tenantId: tenant.id,
-            sectionId: input.classId,
-            studentId: record.studentId,
-            attendanceDate: day,
-            status: record.status,
-            markedBy: membership.userId,
-          },
-          update: {
-            status: record.status,
-            markedBy: membership.userId,
-          },
-        }),
-      ),
+            update: {
+              status: record.status,
+              markedBy: membership.userId,
+            },
+          });
+        }
+      },
       { timeout: 20_000 },
     );
 
