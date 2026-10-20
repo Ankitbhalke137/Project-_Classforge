@@ -42,6 +42,9 @@ model Tenant {
   exams Exam[]
   marks         Mark[]
   announcements Announcement[]
+  academicTerms AcademicTerm[]
+  timetablePeriods TimetablePeriod[]
+  notificationPreferences NotificationPreference[]
 
   @@map("tenants")
 }
@@ -63,6 +66,7 @@ model User {
   attendanceMarked AttendanceRecord[]
   gradedMarks   Mark[]
   announcements Announcement[]
+  notificationPreferences NotificationPreference[]
 
   @@map("users")
 }
@@ -101,11 +105,82 @@ model AcademicYear {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   classes SchoolClass[]
   enrolments Enrolment[]
+  terms AcademicTerm[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])
   @@index([tenantId, status])
   @@map("academic_years")
+}
+
+/**
+ * One term inside an academic year — "Term 1", "Term 2", and so on.
+ *
+ * Kept separate from `AcademicYear` so a school can name and date its own
+ * terms without the code assuming three equal splits.
+ */
+model AcademicTerm {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  label          String   @db.VarChar(50)
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  position       Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [tenantId, academicYearId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, academicYearId, label])
+  @@index([tenantId, academicYearId, position])
+  @@map("academic_terms")
+}
+
+/**
+ * One row of a school's daily timetable — period number and its clock times.
+ *
+ * `startTime` and `endTime` are stored as "HH:MM" strings rather than times,
+ * because a period is a wall-clock label a school sets, not an instant.
+ */
+model TimetablePeriod {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  period    Int
+  startTime String   @map("start_time") @db.VarChar(5)
+  endTime   String   @map("end_time") @db.VarChar(5)
+  label     String?  @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, period])
+  @@index([tenantId])
+  @@map("timetable_periods")
+}
+
+/**
+ * One person's notification choices inside one school.
+ *
+ * Per school, not per account: the same person can be a teacher in one school
+ * and a parent in another, and each reaches them its own way.
+ */
+model NotificationPreference {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  inAppNotifications Boolean  @default(true) @map("in_app_notifications")
+  emailNotifications Boolean  @default(false) @map("email_notifications")
+  classAnnouncements Boolean  @default(true) @map("class_announcements")
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("notification_preferences")
 }
 
 
