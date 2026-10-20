@@ -50,8 +50,10 @@ function PlatformAdminsContent() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [addOpen, setAddOpen] = useState(addParam);
   const [removing, setRemoving] = useState<PlatformAdmin | null>(null);
+  const [resending, setResending] = useState<PlatformAdmin | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const rows = admins.data ?? [];
   const query = search.trim().toLowerCase();
@@ -130,6 +132,27 @@ function PlatformAdminsContent() {
     }
   }
 
+  async function resendCredentials(row: PlatformAdmin) {
+    setPendingKey(`${row.userId}:${row.tenantId}`);
+    setActionError(null);
+    setActionNotice(null);
+    try {
+      const result = await platformApi.resendAdminCredentials(row.userId, row.tenantId);
+      setResending(null);
+      setActionNotice(
+        `A new temporary password was emailed to ${result.email}. Their old password no longer works, and any open session ends within 15 minutes.`,
+      );
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not send new credentials. Nothing was changed.",
+      );
+    } finally {
+      setPendingKey(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -174,6 +197,12 @@ function PlatformAdminsContent() {
       {actionError ? (
         <p className="rounded-xl border border-danger-100 bg-danger-50 px-4 py-3 text-sm text-danger-600">
           {actionError}
+        </p>
+      ) : null}
+
+      {actionNotice ? (
+        <p className="rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-secondary-strong">
+          {actionNotice}
         </p>
       ) : null}
 
@@ -312,6 +341,17 @@ function PlatformAdminsContent() {
                           variant="secondary"
                           size="sm"
                           disabled={busy}
+                          onClick={() => {
+                            setActionNotice(null);
+                            setResending(row);
+                          }}
+                        >
+                          Resend login
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={busy}
                           onClick={() => toggleStatus(row)}
                         >
                           {row.status === "ACTIVE" ? "Deactivate" : "Activate"}
@@ -371,6 +411,20 @@ function PlatformAdminsContent() {
         initialSchoolId={schoolParam}
         onClose={closeAddModal}
         onCreated={() => admins.reload()}
+      />
+
+      <ConfirmModal
+        open={resending !== null}
+        onClose={() => setResending(null)}
+        onConfirm={() => (resending ? resendCredentials(resending) : undefined)}
+        title="Resend login details"
+        message={
+          resending
+            ? `A new temporary password will be emailed to ${resending.email}. The one they have now stops working, and open sessions end within 15 minutes.`
+            : ""
+        }
+        confirmLabel="Send new password"
+        isPending={resending !== null && pendingKey === `${resending.userId}:${resending.tenantId}`}
       />
 
       <ConfirmModal
@@ -508,6 +562,12 @@ function AddAdminModal({
                   ? "We sent these credentials to them by email. The password is shown here once as a backup and cannot be retrieved later."
                   : "The email could not be sent, so share these credentials with them. The password is shown once and cannot be retrieved later."}
               </p>
+              {!created.emailSent && created.emailError ? (
+                <p className="rounded-lg border border-line bg-page px-3 py-2 text-[13px] text-body">
+                  <span className="font-semibold text-ink">Reason: </span>
+                  {created.emailError}
+                </p>
+              ) : null}
               <div className="rounded-xl border border-line bg-page px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
                   Email

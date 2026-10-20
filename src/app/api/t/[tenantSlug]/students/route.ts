@@ -5,6 +5,7 @@ import {
   listStudents,
   createStudent,
 } from "@/lib/services/student-service";
+import { sendCredentialsEmail, appUrl } from "@/lib/mail";
 
 interface RouteContext {
   params: Promise<{ tenantSlug: string }>;
@@ -123,12 +124,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const body = await request.json().catch(() => ({}));
 
-    const newStudent = await createStudent(tenant.id, body, {
+    const { student, temporaryPassword } = await createStudent(tenant.id, body, {
       userId: membership.userId,
       role: membership.role,
     });
 
-    return NextResponse.json(newStudent, { status: 201 });
+    // A new sign-in account gets its password by email, the same way an invite
+    // does. An existing account keeps its own password and is not emailed.
+    let emailSent = false;
+    let emailError: string | null = null;
+
+    if (temporaryPassword) {
+      const result = await sendCredentialsEmail({
+        to: student.email,
+        name: student.name,
+        schoolName: tenant.name,
+        role: "Student",
+        temporaryPassword,
+        signInUrl: `${appUrl()}/login`,
+      });
+      emailSent = result.sent;
+      emailError = result.error ?? null;
+    }
+
+    return NextResponse.json(
+      { ...student, temporaryPassword, emailSent, emailError },
+      { status: 201 },
+    );
   } catch (error) {
     return handleApiError(error);
   }

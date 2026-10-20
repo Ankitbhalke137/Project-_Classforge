@@ -111,7 +111,9 @@ export function UsersPermissionsSection() {
         type: "success",
         message: result.emailSent
           ? `${result.name} has been added to ${result.schoolName} and emailed a temporary password.`
-          : `${result.name} has been added to ${result.schoolName}, but the email could not be sent.`,
+          : `${result.name} has been added to ${result.schoolName}, but the email could not be sent.${
+              result.emailError ? ` (${result.emailError})` : ""
+            }`,
       });
       setInviteName("");
       setInviteEmail("");

@@ -119,6 +119,8 @@ export interface CreatedPlatformAdmin extends PlatformAdmin {
   temporaryPassword: string | null;
   /** True when the invite email with the temporary password went out. */
   emailSent: boolean;
+  /** Why the email did not go out. Null when it did, or when there was none to send. */
+  emailError?: string | null;
 }
 
 /* ---------- People inside a school ---------- */
@@ -143,13 +145,15 @@ export interface Student {
   dateOfBirth?: string | null;
   createdAt?: string;
   enrolmentStatus?: string | null;
+  guardianName?: string | null;
+  guardianPhone?: string | null;
 
   // Fields the API may not have a column behind yet — they come back empty
   // rather than being invented.
   grade?: string;
   section?: string;
   gender?: Gender;
-  phone?: string;
+  phone?: string | null;
   address?: string;
   bloodGroup?: string;
   parentId?: string | null;
@@ -170,6 +174,9 @@ export interface Teacher {
   subjectIds: string[];
   /** Classes this teacher teaches or is homeroom of. */
   classIds: string[];
+  /** Membership state in this school. A deactivated teacher keeps their row. */
+  status: "ACTIVE" | "INACTIVE";
+  userId?: string | null;
 }
 
 export interface Parent {
@@ -197,7 +204,10 @@ export interface Subject {
 
 /** A section of a grade — "Grade 10 · A" is one class, not the whole grade. */
 export interface SchoolClass {
+  /** The section id (or the class id when the class has no sections yet). */
   id: string;
+  /** The parent class, for filters that span all of its sections. */
+  classId?: string;
   name: string;
   grade: string;
   section: string;

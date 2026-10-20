@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
     // Only a brand new account has a password worth emailing. Someone who
     // already had one keeps it, and re-sending it would be wrong.
     let emailSent = false;
+    let emailError: string | null = null;
     if (temporaryPassword) {
       const result = await sendCredentialsEmail({
         to: user.email,
@@ -146,6 +147,7 @@ export async function POST(request: NextRequest) {
         signInUrl: `${appUrl()}/login`,
       });
       emailSent = result.sent;
+      emailError = result.error ?? null;
     }
 
     return NextResponse.json(
@@ -163,6 +165,7 @@ export async function POST(request: NextRequest) {
         // shows the credentials panel when this is present.
         temporaryPassword,
         emailSent,
+        emailError,
       },
       { status: 201 },
     );

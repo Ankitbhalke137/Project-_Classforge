@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+import { hash } from "bcryptjs";
 import { z } from "zod";
 import { Prisma, MembershipRole, EnrolmentStatus, MembershipStatus } from "@prisma/client";
 import { withTenant } from "@/lib/tenant-context";
@@ -45,6 +47,9 @@ export const createStudentSchema = z.object({
     .optional()
     .nullable(),
   email: z.string().trim().email("Invalid email address").optional().nullable(),
+  phone: z.string().trim().max(50, "Phone number is too long").optional().nullable(),
+  guardianName: z.string().trim().max(150, "Guardian name is too long").optional().nullable(),
+  guardianPhone: z.string().trim().max(50, "Guardian phone is too long").optional().nullable(),
   sectionId: z.string().uuid("Invalid section ID").optional().nullable(),
   academicYearId: z.string().uuid("Invalid academic year ID").optional().nullable(),
 });
@@ -62,6 +67,9 @@ export const updateStudentSchema = z.object({
     .optional()
     .nullable(),
   email: z.string().trim().email("Invalid email address").optional().nullable(),
+  phone: z.string().trim().max(50, "Phone number is too long").optional().nullable(),
+  guardianName: z.string().trim().max(150, "Guardian name is too long").optional().nullable(),
+  guardianPhone: z.string().trim().max(50, "Guardian phone is too long").optional().nullable(),
   sectionId: z.string().uuid("Invalid section ID").optional().nullable(),
   academicYearId: z.string().uuid("Invalid academic year ID").optional().nullable(),
   status: z.enum(["ACTIVE", "INACTIVE", "WITHDRAWN", "COMPLETED", "TRANSFERRED"]).optional(),
@@ -86,6 +94,10 @@ export function formatStudentRecord(student: {
   firstName: string;
   lastName: string;
   dateOfBirth: Date | null;
+  phone?: string | null;
+  guardianName?: string | null;
+  guardianPhone?: string | null;
+  status?: string;
   createdAt: Date;
   user?: { id: string; name: string; email: string } | null;
   enrolments?: Array<{
@@ -111,6 +123,9 @@ export function formatStudentRecord(student: {
     : "Unassigned";
 
   const isEnrolmentActive = activeEnrolment ? activeEnrolment.status === "ACTIVE" : true;
+  // The enrolment is the source of truth (it existed before the status column);
+  // the column is a mirror so a row can be filtered without a join.
+  const isActive = isEnrolmentActive && student.status !== "INACTIVE";
 
   return {
     id: student.id,
@@ -127,7 +142,10 @@ export function formatStudentRecord(student: {
     dateOfBirth: student.dateOfBirth
       ? student.dateOfBirth.toISOString().split("T")[0]
       : null,
-    status: isEnrolmentActive ? ("ACTIVE" as const) : ("INACTIVE" as const),
+    phone: student.phone ?? null,
+    guardianName: student.guardianName ?? null,
+    guardianPhone: student.guardianPhone ?? null,
+    status: isActive ? ("ACTIVE" as const) : ("INACTIVE" as const),
     enrolmentStatus: activeEnrolment?.status ?? null,
     createdAt: student.createdAt.toISOString(),
   };
@@ -426,6 +444,11 @@ export async function createStudent(
 
   const input = createStudentSchema.parse(rawInput);
 
+  // bcrypt must stay outside the transaction. Hashing inside it, on a cold
+  // serverless connection, pushed the first create past the 5s budget (P2028).
+  const candidatePassword = input.email ? randomBytes(12).toString("base64url") : null;
+  const candidateHash = candidatePassword ? await hash(candidatePassword, 10) : null;
+
   return withTenant(tenantId, async (tx) => {
     // 1. Verify admission number uniqueness within this school
     const existingStudent = await tx.student.findUnique({
@@ -484,6 +507,7 @@ export async function createStudent(
 
     // 3. Handle optional user creation or linking if email provided
     let linkedUserId: string | null = null;
+    let temporaryPassword: string | null = null;
     if (input.email) {
       const email = input.email.toLowerCase();
       let user = await tx.user.findUnique({
@@ -491,13 +515,21 @@ export async function createStudent(
       });
 
       if (!user) {
-        // Create user with default dummy password hash
+        // A student with no password could never sign in, so give the account a
+        // temporary one and let the route email it. It is shown once, never stored.
+        temporaryPassword = candidatePassword;
         user = await tx.user.create({
           data: {
             name: `${input.firstName} ${input.lastName}`.trim(),
             email,
-            passwordHash: "", // Invited user without password yet
+            passwordHash: candidateHash!,
           },
+        });
+      } else if (!user.passwordHash) {
+        temporaryPassword = candidatePassword;
+        user = await tx.user.update({
+          where: { id: user.id },
+          data: { passwordHash: candidateHash! },
         });
       }
 
@@ -532,6 +564,9 @@ export async function createStudent(
         firstName: input.firstName,
         lastName: input.lastName,
         dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null,
+        phone: input.phone ?? null,
+        guardianName: input.guardianName ?? null,
+        guardianPhone: input.guardianPhone ?? null,
         userId: linkedUserId,
       },
       include: {
@@ -565,11 +600,14 @@ export async function createStudent(
       enrolmentWithSection = [enrolment];
     }
 
-    return formatStudentRecord({
-      ...student,
-      enrolments: enrolmentWithSection ?? [],
-    });
-  });
+    return {
+      student: formatStudentRecord({
+        ...student,
+        enrolments: enrolmentWithSection ?? [],
+      }),
+      temporaryPassword,
+    };
+  }, { timeout: 15_000 });
 }
 
 /**
@@ -635,6 +673,9 @@ export async function updateStudent(
     if (input.dateOfBirth !== undefined) {
       dataToUpdate.dateOfBirth = input.dateOfBirth ? new Date(input.dateOfBirth) : null;
     }
+    if (input.phone !== undefined) dataToUpdate.phone = input.phone || null;
+    if (input.guardianName !== undefined) dataToUpdate.guardianName = input.guardianName || null;
+    if (input.guardianPhone !== undefined) dataToUpdate.guardianPhone = input.guardianPhone || null;
 
     // 4. Update section / class enrolment if sectionId provided
     if (input.sectionId !== undefined) {
@@ -702,6 +743,7 @@ export async function updateStudent(
     // 5. Handle status update (ACTIVE vs INACTIVE / WITHDRAWN)
     if (input.status) {
       if (input.status === "INACTIVE" || input.status === "WITHDRAWN") {
+        dataToUpdate.status = "INACTIVE";
         await tx.enrolment.updateMany({
           where: {
             tenantId,
@@ -725,6 +767,7 @@ export async function updateStudent(
           });
         }
       } else if (input.status === "ACTIVE") {
+        dataToUpdate.status = "ACTIVE";
         const latestEnrolment = await tx.enrolment.findFirst({
           where: { tenantId, studentId },
           orderBy: { enrolledAt: "desc" },
@@ -782,7 +825,7 @@ export async function updateStudent(
     });
 
     return formatStudentRecord(updated);
-  });
+  }, { timeout: 15_000 });
 }
 
 /**
@@ -827,6 +870,11 @@ export async function deleteOrDeactivateStudent(
     }
 
     // Deactivation: set enrolments to WITHDRAWN and membership to INACTIVE
+    await tx.student.update({
+      where: { id: studentId },
+      data: { status: "INACTIVE" },
+    });
+
     await tx.enrolment.updateMany({
       where: {
         tenantId,
@@ -855,5 +903,5 @@ export async function deleteOrDeactivateStudent(
       deleted: false,
       status: "INACTIVE",
     };
-  });
+  }, { timeout: 15_000 });
 }

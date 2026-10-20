@@ -91,7 +91,29 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
       },
     });
 
+    // An invited teacher must also appear on the staff roster. The membership
+    // alone made them a member of the school but invisible to the Teachers page.
+    if (role === "TEACHER") {
+      const alreadyOnStaff = await prisma.teacher.findFirst({
+        where: { tenantId: tenant.id, userId: user.id },
+        select: { id: true },
+      });
+
+      if (!alreadyOnStaff) {
+        const [firstName, ...rest] = name.trim().split(/\s+/);
+        await prisma.teacher.create({
+          data: {
+            tenantId: tenant.id,
+            userId: user.id,
+            firstName: firstName || name,
+            lastName: rest.join(" "),
+          },
+        });
+      }
+    }
+
     let emailSent = false;
+    let emailError: string | null = null;
     if (temporaryPassword) {
       const result = await sendCredentialsEmail({
         to: user.email,
@@ -102,6 +124,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
         signInUrl: `${appUrl()}/login`,
       });
       emailSent = result.sent;
+      emailError = result.error ?? null;
     }
 
     return NextResponse.json(
@@ -113,6 +136,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
         schoolName: tenant.name,
         temporaryPassword,
         emailSent,
+        emailError,
       },
       { status: 201 },
     );

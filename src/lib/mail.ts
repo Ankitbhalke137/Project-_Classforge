@@ -14,10 +14,26 @@ export interface MailResult {
   error?: string;
 }
 
+const REQUIRED_SMTP_VARS = ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"] as const;
+
+/**
+ * Names the variables that are missing, rather than just returning false.
+ *
+ * A deploy that forgot one of them looks identical to a mail server that is
+ * down, and the fix is completely different. Naming them turns a silent failure
+ * into a one-line answer in the logs.
+ */
+function missingSmtpVars(): string[] {
+  return REQUIRED_SMTP_VARS.filter((name) => !process.env[name]);
+}
+
 function smtpConfigured(): boolean {
-  return Boolean(
-    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS && process.env.SMTP_FROM,
-  );
+  const missing = missingSmtpVars();
+  if (missing.length > 0) {
+    console.error(`Email is not configured: missing ${missing.join(", ")}.`);
+    return false;
+  }
+  return true;
 }
 
 function getTransport() {
@@ -60,7 +76,11 @@ export async function sendMail(options: {
   html?: string;
 }): Promise<MailResult> {
   if (!smtpConfigured()) {
-    return { sent: false, error: "Email is not configured on this server." };
+    const missing = missingSmtpVars();
+    return {
+      sent: false,
+      error: `Email is not configured on this server (missing ${missing.join(", ")}).`,
+    };
   }
 
   try {

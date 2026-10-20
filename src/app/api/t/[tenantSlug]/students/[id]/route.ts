@@ -11,6 +11,17 @@ interface RouteContext {
   params: Promise<{ tenantSlug: string; id: string }>;
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A malformed id is not a server error. Without this, Prisma rejects the cast
+ * and the route answers 500 instead of 404.
+ */
+function assertValidId(id: string) {
+  if (!UUID_PATTERN.test(id)) throw new NotFoundError("Student not found.");
+}
+
 /**
  * GET /api/t/:tenantSlug/students/:id
  *
@@ -23,6 +34,7 @@ interface RouteContext {
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { tenantSlug, id } = await context.params;
+    assertValidId(id);
 
     const { tenant, membership } = await resolveTenantContext(
       request,
@@ -54,6 +66,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const { tenantSlug, id } = await context.params;
+    assertValidId(id);
 
     const { tenant, membership } = await resolveTenantContext(
       request,
@@ -86,6 +99,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { tenantSlug, id } = await context.params;
+    assertValidId(id);
 
     const { tenant, membership } = await resolveTenantContext(
       request,

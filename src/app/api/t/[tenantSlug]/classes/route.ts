@@ -76,7 +76,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
         : [{ id: schoolClass.id, name: "" }];
 
       return sections.map((section) => ({
+        // `id` is the section, because that is what rosters and registers take.
+        // `classId` is exposed separately so a filter can span every section.
         id: section.id,
+        classId: schoolClass.id,
         name: section.name ? `${schoolClass.name} - ${section.name}` : schoolClass.name,
         grade: schoolClass.name,
         section: section.name,

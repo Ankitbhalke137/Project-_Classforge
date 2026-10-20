@@ -160,6 +160,17 @@ export const platformApi = {
       `/api/platform/admins/${userId}?tenantId=${encodeURIComponent(tenantId)}`,
       { method: "DELETE" },
     ),
+  /** Issues a fresh temporary password for an existing member and emails it. */
+  resendAdminCredentials: (userId: string, tenantId: string) =>
+    api<{
+      userId: string;
+      tenantId: string;
+      name: string;
+      email: string;
+      schoolName: string;
+      emailSent: boolean;
+      emailError: string | null;
+    }>(`/api/platform/admins/${userId}/resend`, { method: "POST", body: { tenantId } }),
 };
 
 export type ListParams = Record<string, string | number | undefined>;
@@ -191,11 +202,20 @@ export const schoolApi = {
       admissionNo: string;
       dateOfBirth?: string | null;
       email?: string | null;
+      phone?: string | null;
+      guardianName?: string | null;
+      guardianPhone?: string | null;
       sectionId?: string | null;
       academicYearId?: string | null;
     },
   ) =>
-    api<Student>(`/api/t/${schoolSlug}/students`, {
+    api<
+      Student & {
+        temporaryPassword: string | null;
+        emailSent: boolean;
+        emailError: string | null;
+      }
+    >(`/api/t/${schoolSlug}/students`, {
       method: "POST",
       body,
     }),
@@ -209,6 +229,9 @@ export const schoolApi = {
       admissionNo?: string;
       dateOfBirth?: string | null;
       email?: string | null;
+      phone?: string | null;
+      guardianName?: string | null;
+      guardianPhone?: string | null;
       sectionId?: string | null;
       academicYearId?: string | null;
       status?: "ACTIVE" | "INACTIVE" | "WITHDRAWN" | "COMPLETED" | "TRANSFERRED";
@@ -253,6 +276,48 @@ export const schoolApi = {
 
   listTeachers: (schoolSlug: string) =>
     api<Teacher[]>(`/api/t/${schoolSlug}/teachers`),
+
+  /** Creates the staff profile, the login and the membership in one call. */
+  createTeacher: (
+    schoolSlug: string,
+    body: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      employeeNo?: string | null;
+      phone?: string | null;
+      qualification?: string | null;
+      designation?: string | null;
+    },
+  ) =>
+    api<{
+      teacher: Teacher;
+      temporaryPassword: string | null;
+      emailSent: boolean;
+      emailError: string | null;
+      existingAccount: boolean;
+    }>(`/api/t/${schoolSlug}/teachers`, { method: "POST", body }),
+
+  updateTeacher: (
+    schoolSlug: string,
+    id: string,
+    body: {
+      firstName?: string;
+      lastName?: string;
+      employeeNo?: string | null;
+      phone?: string | null;
+      qualification?: string | null;
+      designation?: string | null;
+      status?: "ACTIVE" | "INACTIVE";
+    },
+  ) => api<Teacher>(`/api/t/${schoolSlug}/teachers/${id}`, { method: "PATCH", body }),
+
+  deactivateTeacher: (schoolSlug: string, id: string) =>
+    api<{ deactivated: boolean; status: string }>(
+      `/api/t/${schoolSlug}/teachers/${id}`,
+      { method: "DELETE" },
+    ),
+
   listParents: (schoolSlug: string, params: ListParams = {}) =>
     api<Paginated<Parent>>(withQuery(`/api/t/${schoolSlug}/parents`, params)),
   listParentChildren: (schoolSlug: string, parentId: string) =>
@@ -381,6 +446,8 @@ export const schoolApi = {
       schoolName: string;
       temporaryPassword: string | null;
       emailSent: boolean;
+      /** Why the email did not go out. Null when it did, or when there was none to send. */
+      emailError?: string | null;
     }>(`/api/t/${schoolSlug}/invite`, { method: "POST", body }),
 
   /* --- Calendar --- */
