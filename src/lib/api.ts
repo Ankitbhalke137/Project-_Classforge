@@ -1,4 +1,6 @@
 import type {
+  AcademicTerm,
+  AcademicYear,
   Announcement,
   AnnouncementPriority,
   AssignmentDetail,
@@ -10,6 +12,7 @@ import type {
   AttendanceTrendPoint,
   Exam,
   ExamResult,
+  ExamStatus,
   FeeInvoice,
   FeeSummary,
   Paginated,
@@ -29,6 +32,8 @@ import type {
   Subject,
   SubmissionStatus,
   Teacher,
+  TeachingAssignment,
+  TimetablePeriod,
   TimetableSlot,
   User,
   Membership,
@@ -324,12 +329,155 @@ export const schoolApi = {
     api<Student[]>(`/api/t/${schoolSlug}/parents/${parentId}/children`),
 
   /* --- Academic structure --- */
-  listSubjects: (schoolSlug: string) =>
-    api<Subject[]>(`/api/t/${schoolSlug}/subjects`),
+  listAcademicYears: (schoolSlug: string) =>
+    api<AcademicYear[]>(`/api/t/${schoolSlug}/academic-years`),
+  createAcademicYear: (
+    schoolSlug: string,
+    body: { name: string; startDate: string; endDate: string; status?: AcademicYear["status"] },
+  ) => api<AcademicYear>(`/api/t/${schoolSlug}/academic-years`, { method: "POST", body }),
+  updateAcademicYear: (
+    schoolSlug: string,
+    id: string,
+    body: {
+      name?: string;
+      startDate?: string;
+      endDate?: string;
+      status?: AcademicYear["status"];
+    },
+  ) => api<AcademicYear>(`/api/t/${schoolSlug}/academic-years/${id}`, { method: "PATCH", body }),
+  deleteAcademicYear: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/academic-years/${id}`, { method: "DELETE" }),
+
+  listTerms: (schoolSlug: string, academicYearId?: string) =>
+    api<AcademicTerm[]>(
+      withQuery(`/api/t/${schoolSlug}/terms`, { academicYearId }),
+    ),
+  createTerm: (
+    schoolSlug: string,
+    body: { academicYearId: string; label: string; startDate: string; endDate: string },
+  ) => api<AcademicTerm>(`/api/t/${schoolSlug}/terms`, { method: "POST", body }),
+  updateTerm: (
+    schoolSlug: string,
+    id: string,
+    body: { label?: string; startDate?: string; endDate?: string; position?: number },
+  ) => api<AcademicTerm>(`/api/t/${schoolSlug}/terms/${id}`, { method: "PATCH", body }),
+  deleteTerm: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/terms/${id}`, { method: "DELETE" }),
+
+  listSubjects: (schoolSlug: string, params: { classId?: string } = {}) =>
+    api<Subject[]>(withQuery(`/api/t/${schoolSlug}/subjects`, params)),
+  createSubject: (
+    schoolSlug: string,
+    body: { classId: string; name: string; code?: string | null },
+  ) => api<Subject>(`/api/t/${schoolSlug}/subjects`, { method: "POST", body }),
+  updateSubject: (
+    schoolSlug: string,
+    id: string,
+    body: { name?: string; code?: string | null },
+  ) => api<Subject>(`/api/t/${schoolSlug}/subjects/${id}`, { method: "PATCH", body }),
+  deleteSubject: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/subjects/${id}`, { method: "DELETE" }),
+
   listClasses: (schoolSlug: string, params: { grade?: string; search?: string } = {}) =>
     api<SchoolClass[]>(withQuery(`/api/t/${schoolSlug}/classes`, params)),
+  createClass: (
+    schoolSlug: string,
+    body: {
+      name: string;
+      academicYearId?: string;
+      room?: string | null;
+      capacity?: number;
+      homeroomTeacherId?: string | null;
+      sections?: string[];
+    },
+  ) =>
+    api<{ id: string; name: string; sections: string[] }>(`/api/t/${schoolSlug}/classes`, {
+      method: "POST",
+      body,
+    }),
+  updateClass: (
+    schoolSlug: string,
+    id: string,
+    body: {
+      name?: string;
+      room?: string | null;
+      capacity?: number;
+      homeroomTeacherId?: string | null;
+    },
+  ) => api<{ id: string }>(`/api/t/${schoolSlug}/classes/${id}`, { method: "PATCH", body }),
+  deleteClass: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/classes/${id}`, { method: "DELETE" }),
+
+  addSection: (schoolSlug: string, classId: string, name: string) =>
+    api<{ id: string; name: string }>(`/api/t/${schoolSlug}/classes/${classId}/sections`, {
+      method: "POST",
+      body: { name },
+    }),
+  updateSection: (schoolSlug: string, sectionId: string, name: string) =>
+    api<{ id: string; name: string }>(`/api/t/${schoolSlug}/sections/${sectionId}`, {
+      method: "PATCH",
+      body: { name },
+    }),
+  deleteSection: (schoolSlug: string, sectionId: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/sections/${sectionId}`, {
+      method: "DELETE",
+    }),
+
+  listTeachingAssignments: (
+    schoolSlug: string,
+    params: { sectionId?: string; teacherId?: string } = {},
+  ) =>
+    api<TeachingAssignment[]>(
+      withQuery(`/api/t/${schoolSlug}/teaching-assignments`, params),
+    ),
+  createTeachingAssignment: (
+    schoolSlug: string,
+    body: { teacherId: string; sectionId: string; subjectId: string },
+  ) =>
+    api<{ id: string }>(`/api/t/${schoolSlug}/teaching-assignments`, {
+      method: "POST",
+      body,
+    }),
+  deleteTeachingAssignment: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/teaching-assignments/${id}`, {
+      method: "DELETE",
+    }),
+
+  listTimetablePeriods: (schoolSlug: string) =>
+    api<TimetablePeriod[]>(`/api/t/${schoolSlug}/timetable-periods`),
+  createTimetablePeriod: (
+    schoolSlug: string,
+    body: { period: number; startTime: string; endTime: string; label?: string | null },
+  ) =>
+    api<TimetablePeriod>(`/api/t/${schoolSlug}/timetable-periods`, {
+      method: "POST",
+      body,
+    }),
+  updateTimetablePeriod: (
+    schoolSlug: string,
+    id: string,
+    body: { period?: number; startTime?: string; endTime?: string; label?: string | null },
+  ) =>
+    api<TimetablePeriod>(`/api/t/${schoolSlug}/timetable-periods/${id}`, {
+      method: "PATCH",
+      body,
+    }),
+  deleteTimetablePeriod: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/timetable-periods/${id}`, {
+      method: "DELETE",
+    }),
+
   getClassTimetable: (schoolSlug: string, classId: string) =>
     api<TimetableSlot[]>(`/api/t/${schoolSlug}/classes/${classId}/timetable`),
+  saveClassTimetable: (
+    schoolSlug: string,
+    classId: string,
+    slots: { day: string; period: number; subjectId: string; teacherId: string }[],
+  ) =>
+    api<TimetableSlot[]>(`/api/t/${schoolSlug}/classes/${classId}/timetable`, {
+      method: "PUT",
+      body: { slots },
+    }),
 
   /* --- Attendance --- */
   /** The register for one class on one day, for marking. */
@@ -359,10 +507,49 @@ export const schoolApi = {
     schoolSlug: string,
     params: { page?: number; search?: string; term?: string; status?: string; classId?: string } = {},
   ) => api<Paginated<Exam>>(withQuery(`/api/t/${schoolSlug}/exams`, params)),
+  createExam: (
+    schoolSlug: string,
+    body: {
+      name: string;
+      term?: string | null;
+      subjectId: string;
+      sectionId: string;
+      examDate: string;
+      maxMarks: number;
+      passMarks?: number;
+      status?: ExamStatus;
+    },
+  ) => api<Exam>(`/api/t/${schoolSlug}/exams`, { method: "POST", body }),
+  updateExam: (
+    schoolSlug: string,
+    examId: string,
+    body: {
+      name?: string;
+      term?: string | null;
+      examDate?: string;
+      maxMarks?: number;
+      passMarks?: number;
+      status?: ExamStatus;
+    },
+  ) => api<Exam>(`/api/t/${schoolSlug}/exams/${examId}`, { method: "PATCH", body }),
+  deleteExam: (schoolSlug: string, examId: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/exams/${examId}`, { method: "DELETE" }),
   getExamResults: (schoolSlug: string, examId: string) =>
     api<{ exam: Exam; results: ExamResult[] }>(`/api/t/${schoolSlug}/exams/${examId}/results`),
+  saveExamMarks: (
+    schoolSlug: string,
+    examId: string,
+    records: { studentId: string; score: number | null; remarks?: string | null }[],
+  ) =>
+    api<{ exam: Exam; results: ExamResult[] }>(
+      `/api/t/${schoolSlug}/exams/${examId}/results`,
+      { method: "PUT", body: { records } },
+    ),
   publishExam: (schoolSlug: string, examId: string) =>
-    api<Exam>(`/api/t/${schoolSlug}/exams/${examId}/publish`, { method: "POST" }),
+    api<{ exam: Exam; results: ExamResult[] }>(
+      `/api/t/${schoolSlug}/exams/${examId}/publish`,
+      { method: "POST" },
+    ),
   /** Whole-class report cards for a published term. */
   listReportCards: (schoolSlug: string, params: { classId: string; term: string }) =>
     api<ReportCard[]>(withQuery(`/api/t/${schoolSlug}/report-cards`, params)),

@@ -1,59 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
+import { createExam, listExams } from "@/lib/services/exam-service";
 
-/**
- * GET /api/t/:tenantSlug/exams?page=1&search=
- *
- * Reads the `exams` table joined to its subject. The table has no term,
- * pass-marks or teacher column, so those come back empty.
- */
-export async function GET(request: NextRequest, context: { params: Promise<{ tenantSlug: string }> }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string }> },
+) {
   try {
     const { tenantSlug } = await context.params;
-    const { tenant } = await resolveTenantContext(request, tenantSlug);
-
-    const search = (request.nextUrl.searchParams.get("search") ?? "").toLowerCase();
-    const page = Math.max(Number(request.nextUrl.searchParams.get("page") ?? 1) || 1, 1);
-    const pageSize = 10;
-
-    const where = {
-      tenantId: tenant.id,
-      ...(search
-        ? { OR: [{ name: { contains: search } }, { subject: { name: { contains: search } } }] }
-        : {}),
-    };
-
-    const [total, exams] = await Promise.all([
-      prisma.exam.count({ where }),
-      prisma.exam.findMany({
-        where,
-        include: { subject: { select: { name: true } } },
-        orderBy: { examDate: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
+    const { tenant } = await resolveTenantContext(request, tenantSlug, [
+      "SCHOOL_ADMIN",
+      "TEACHER",
+      "STUDENT",
     ]);
 
-    return NextResponse.json({
-      data: exams.map((exam) => ({
-        id: exam.id,
-        name: `${exam.subject.name} — ${exam.name}`,
-        term: "",
-        classId: exam.sectionId,
-        subjectId: exam.subjectId,
-        teacherId: "",
-        date: exam.examDate.toISOString(),
-        maxMarks: exam.maxMarks,
-        passMarks: 0,
-        status: exam.status,
-        publishedAt: exam.createdAt.toISOString(),
-      })),
-      total,
-      page,
-      pageSize,
-    });
+    const params = request.nextUrl.searchParams;
+    return NextResponse.json(
+      await listExams(tenant.id, {
+        page: Number(params.get("page") ?? 1) || 1,
+        search: params.get("search") ?? undefined,
+        status: params.get("status") ?? undefined,
+        classId: params.get("classId") ?? undefined,
+        term: params.get("term") ?? undefined,
+      }),
+    );
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string }> },
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const { tenant } = await resolveTenantContext(request, tenantSlug, [
+      "SCHOOL_ADMIN",
+      "TEACHER",
+    ]);
+    const body: unknown = await request.json().catch(() => null);
+    return NextResponse.json(await createExam(tenant.id, body), { status: 201 });
   } catch (error) {
     return handleApiError(error);
   }

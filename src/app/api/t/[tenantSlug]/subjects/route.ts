@@ -1,38 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
+import { createSubject, listSubjects } from "@/lib/services/academic-service";
 
-/**
- * GET /api/t/:tenantSlug/subjects
- *
- * Reads the `subjects` table. The table has no grade or max-marks column, so
- * those come back as empty values rather than guessed ones.
- */
-export async function GET(request: NextRequest, context: { params: Promise<{ tenantSlug: string }> }) {
+const READ_ROLES = ["SCHOOL_ADMIN", "TEACHER", "STUDENT"] as const;
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string }> },
+) {
   try {
     const { tenantSlug } = await context.params;
-    const { tenant } = await resolveTenantContext(request, tenantSlug, [
-      "SCHOOL_ADMIN",
-      "TEACHER",
-      "STUDENT",
-    ]);
+    const { tenant } = await resolveTenantContext(request, tenantSlug, [...READ_ROLES]);
 
-    const subjects = await prisma.subject.findMany({
-      where: { tenantId: tenant.id },
-      orderBy: { name: "asc" },
-    });
+    let rows = await listSubjects(tenant.id);
+    const classId = request.nextUrl.searchParams.get("classId");
+    if (classId) rows = rows.filter((row) => row.classId === classId);
 
-    const data = subjects.map((subject) => ({
-      id: subject.id,
-      name: subject.name,
-      code: subject.code ?? "",
-      // No column behind these yet.
-      grades: [] as string[],
-      maxMarks: 0,
-    }));
+    return NextResponse.json(rows);
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
 
-    return NextResponse.json(data);
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string }> },
+) {
+  try {
+    const { tenantSlug } = await context.params;
+    const { tenant } = await resolveTenantContext(request, tenantSlug, ["SCHOOL_ADMIN"]);
+    const body: unknown = await request.json().catch(() => null);
+    return NextResponse.json(await createSubject(tenant.id, body), { status: 201 });
   } catch (error) {
     return handleApiError(error);
   }

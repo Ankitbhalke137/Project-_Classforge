@@ -44,6 +44,7 @@ model Tenant {
   announcements Announcement[]
   academicTerms AcademicTerm[]
   timetablePeriods TimetablePeriod[]
+  timetableSlots TimetableSlot[]
   notificationPreferences NotificationPreference[]
 
   @@map("tenants")
@@ -161,6 +162,33 @@ model TimetablePeriod {
 }
 
 /**
+ * One subject, in one section, in one period of the week.
+ *
+ * The period row (`TimetablePeriod`) carries the clock times; this table only
+ * says what happens in that slot for that class.
+ */
+model TimetableSlot {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  sectionId String   @map("section_id") @db.Uuid
+  subjectId String   @map("subject_id") @db.Uuid
+  teacherId String   @map("teacher_id") @db.Uuid
+  day       String   @db.VarChar(12)
+  period    Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sectionId, day, period])
+  @@index([tenantId, sectionId])
+  @@index([tenantId, teacherId])
+  @@map("timetable_slots")
+}
+
+/**
  * One person's notification choices inside one school.
  *
  * Per school, not per account: the same person can be a teacher in one school
@@ -189,6 +217,10 @@ model SchoolClass {
   tenantId       String   @map("tenant_id") @db.Uuid
   academicYearId String   @map("academic_year_id") @db.Uuid
   name           String   @db.VarChar(50)
+  room           String?  @db.VarChar(50)
+  capacity       Int      @default(0)
+  /** Plain uuid rather than a relation: a teacher leaving must not delete the class. */
+  homeroomTeacherId String? @map("homeroom_teacher_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
 
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -216,6 +248,7 @@ model Section {
   attendanceRecords   AttendanceRecord[]
   exams  Exam[]
   announcements Announcement[]
+  timetableSlots TimetableSlot[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, classId, name])
@@ -235,6 +268,7 @@ model Subject {
   
   teachingAssignments TeachingAssignment[]
   exams               Exam[]  
+  timetableSlots      TimetableSlot[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, classId, name])
@@ -295,6 +329,7 @@ model Teacher {
   user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   teachingAssignments TeachingAssignment[]
+  timetableSlots      TimetableSlot[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, userId])
@@ -334,6 +369,7 @@ enum AttendanceStatus {
 
 enum ExamStatus {
   SCHEDULED
+  IN_PROGRESS
   COMPLETED
   CANCELLED
 }
@@ -385,9 +421,13 @@ model Exam {
   subjectId String     @map("subject_id") @db.Uuid
   sectionId String     @map("section_id") @db.Uuid
   name      String     @db.VarChar(100)
+  term      String?    @db.VarChar(50)
   examDate  DateTime   @map("exam_date") @db.Date
   maxMarks  Int        @map("max_marks")
+  passMarks Int        @default(0) @map("pass_marks")
   status    ExamStatus @default(SCHEDULED)
+  /** Set when the marks are released to students and parents. */
+  publishedAt DateTime? @map("published_at") @db.Timestamp(6)
   createdAt DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -409,6 +449,7 @@ model Mark {
   examId    String   @map("exam_id") @db.Uuid
   studentId String   @map("student_id") @db.Uuid
   score     Decimal  @db.Decimal(7, 2)
+  remarks   String?  @db.VarChar(300)
   gradedBy  String?  @map("graded_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
@@ -424,6 +465,12 @@ model Mark {
   @@map("marks")
 }
 
+enum AnnouncementPriority {
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
 model Announcement {
   id          String   @id @default(uuid()) @db.Uuid
   tenantId    String   @map("tenant_id") @db.Uuid
@@ -431,6 +478,11 @@ model Announcement {
   createdBy   String   @map("created_by") @db.Uuid
   title       String   @db.VarChar(200)
   content     String   @db.Text
+  /** Which groups see this on their announcement list. */
+  audience    String[] @default(["EVERYONE"])
+  priority    AnnouncementPriority @default(NORMAL)
+  /** Pinned notices sort above everything else. */
+  pinned      Boolean  @default(false)
   publishedAt DateTime? @map("published_at") @db.Timestamp(6)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp(6)

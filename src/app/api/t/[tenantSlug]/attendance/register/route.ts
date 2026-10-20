@@ -37,10 +37,18 @@ export async function GET(
       });
     }
 
-    const day = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? new Date(`${rawDate}T00:00:00`) : new Date();
+    // Date-only columns live at UTC midnight; using local midnight would store
+    // (and then look up) the previous day in timezones east of UTC.
+    const now = new Date();
+    const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate(),
+    ).padStart(2, "0")}`;
+    const day = new Date(
+      `${/^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : localToday}T00:00:00.000Z`,
+    );
 
     const enrolments = await prisma.enrolment.findMany({
-      where: { tenantId: tenant.id, sectionId },
+      where: { tenantId: tenant.id, sectionId, status: "ACTIVE" },
       include: {
         student: {
           select: { id: true, firstName: true, lastName: true, admissionNo: true },

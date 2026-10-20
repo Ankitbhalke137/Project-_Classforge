@@ -196,10 +196,49 @@ export interface Subject {
   name: string;
   /** Short code used in timetables and report cards, e.g. "PHY". */
   code: string;
-  /** Grades this subject is offered in. */
-  grades: string[];
-  /** Out of the full marks for an exam in this subject. */
-  maxMarks: number;
+  classId: string;
+  className: string;
+  teacherCount: number;
+}
+
+export interface AcademicTerm {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  position: number;
+}
+
+export interface AcademicYear {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: "UPCOMING" | "ACTIVE" | "COMPLETED";
+  classCount: number;
+  studentCount: number;
+  terms: AcademicTerm[];
+}
+
+export interface TimetablePeriod {
+  id: string;
+  period: number;
+  startTime: string;
+  endTime: string;
+  label: string | null;
+}
+
+/** A teacher being responsible for one subject in one section. */
+export interface TeachingAssignment {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  sectionId: string;
+  classId: string;
+  sectionName: string;
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
 }
 
 /** A section of a grade — "Grade 10 · A" is one class, not the whole grade. */
@@ -214,9 +253,13 @@ export interface SchoolClass {
   room: string;
   /** The teacher responsible for this class. Null while the post is vacant. */
   homeroomTeacherId: string | null;
+  homeroomTeacherName?: string | null;
   subjectIds: string[];
   studentCount: number;
   capacity: number;
+  academicYearId?: string;
+  academicYear?: { id: string; name: string; status: string };
+  sectionCount?: number;
 }
 
 export const WEEKDAYS = [
@@ -300,7 +343,7 @@ export interface AttendanceTrendPoint {
 
 /* ---------- Exams & grades ---------- */
 
-export const EXAM_STATUSES = ["SCHEDULED", "IN_PROGRESS", "PUBLISHED"] as const;
+export const EXAM_STATUSES = ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
 export type ExamStatus = (typeof EXAM_STATUSES)[number];
 
 export interface Exam {
@@ -316,6 +359,13 @@ export interface Exam {
   status: ExamStatus;
   /** Set once results are released. */
   publishedAt: string | null;
+  subjectName?: string;
+  sectionId?: string;
+  sectionName?: string;
+  className?: string;
+  /** How many students already have a mark. */
+  markedCount?: number;
+  studentCount?: number;
 }
 
 /** Percentage at or above which a grade is awarded. Ordered high to low. */
@@ -339,6 +389,8 @@ export interface ExamResult {
   marksObtained: number | null;
   grade: Grade | null;
   remarks: string | null;
+  studentName?: string;
+  admissionNo?: string;
 }
 
 export interface ReportCardRow {
