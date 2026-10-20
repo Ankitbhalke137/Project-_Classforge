@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/states";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/badge";
 import { useApi } from "@/lib/hooks";
-import { schoolApi } from "@/lib/api";
+import { ApiError, schoolApi } from "@/lib/api";
 import type { Teacher } from "@/types";
 
 function TeachersOverview({ schoolSlug }: { schoolSlug: string }) {
@@ -90,6 +90,7 @@ export function UsersPermissionsSection() {
   const schoolSlug = typeof window !== "undefined" ? window.location.pathname.split("/").filter(Boolean)[0] : "";
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"TEACHER" | "STUDENT">("TEACHER");
   const [inviteResult, setInviteResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -99,15 +100,32 @@ export function UsersPermissionsSection() {
     setInviting(true);
     setInviteResult(null);
 
-    // There is no backend endpoint for inviting users to a school.
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      const result = await schoolApi.invite(schoolSlug, {
+        name: inviteName.trim(),
+        email: inviteEmail.trim(),
+        role: inviteRole,
+      });
 
-    setInviting(false);
-    setInviteResult({
-      type: "error",
-      message: "User invitations require a backend endpoint that is not yet available. Invites cannot be sent at this time.",
-    });
-    setTimeout(() => setInviteResult(null), 5000);
+      setInviteResult({
+        type: "success",
+        message: result.emailSent
+          ? `${result.name} has been added to ${result.schoolName} and emailed a temporary password.`
+          : `${result.name} has been added to ${result.schoolName}, but the email could not be sent.`,
+      });
+      setInviteName("");
+      setInviteEmail("");
+    } catch (error) {
+      setInviteResult({
+        type: "error",
+        message:
+          error instanceof ApiError
+            ? (Object.values(error.fields)[0] ?? error.message)
+            : "Could not send the invite. Try again in a moment.",
+      });
+    } finally {
+      setInviting(false);
+    }
   }
 
   return (
@@ -134,6 +152,8 @@ export function UsersPermissionsSection() {
           onClose={() => setInviteOpen(false)}
           onInvite={handleInvite}
           inviting={inviting}
+          inviteName={inviteName}
+          setInviteName={setInviteName}
           inviteEmail={inviteEmail}
           setInviteEmail={setInviteEmail}
           inviteRole={inviteRole}
@@ -190,6 +210,8 @@ function InviteUserModal({
   onClose,
   onInvite,
   inviting,
+  inviteName,
+  setInviteName,
   inviteEmail,
   setInviteEmail,
   inviteRole,
@@ -199,6 +221,8 @@ function InviteUserModal({
   onClose: () => void;
   onInvite: (event: React.FormEvent) => void;
   inviting: boolean;
+  inviteName: string;
+  setInviteName: (value: string) => void;
   inviteEmail: string;
   setInviteEmail: (value: string) => void;
   inviteRole: "TEACHER" | "STUDENT";
@@ -224,6 +248,21 @@ function InviteUserModal({
         <CardBody>
           <form onSubmit={onInvite} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="col-span-full sm:col-span-1">
+                <label htmlFor="invite-name" className="text-sm font-medium text-primary block mb-1">
+                  Full name <span className="ml-0.5 text-danger-600">*</span>
+                </label>
+                <input
+                  id="invite-name"
+                  type="text"
+                  value={inviteName}
+                  onChange={(event) => setInviteName(event.target.value)}
+                  placeholder="Priya Sharma"
+                  disabled={inviting}
+                  required
+                  className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft disabled:bg-page"
+                />
+              </div>
               <div className="col-span-full sm:col-span-1">
                 <label htmlFor="invite-email" className="text-sm font-medium text-primary block mb-1">
                   Email address <span className="ml-0.5 text-danger-600">*</span>
@@ -255,14 +294,18 @@ function InviteUserModal({
               </div>
             </div>
             <p className="text-[12px] text-muted">
-              Invitations require a backend endpoint that is not yet available. The form above
-              demonstrates the UI but cannot send an invite at this time.
+              The invitee is emailed a temporary password and can sign in straight away. They
+              should change it after their first sign-in.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" onClick={onClose} disabled={inviting}>
                 Cancel
               </Button>
-              <Button onClick={onInvite} isLoading={inviting} disabled={inviting || !inviteEmail}>
+              <Button
+                onClick={onInvite}
+                isLoading={inviting}
+                disabled={inviting || !inviteEmail.trim() || !inviteName.trim()}
+              >
                 Send Invite
               </Button>
             </div>

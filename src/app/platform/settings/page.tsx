@@ -1,12 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Avatar, Badge } from "@/components/ui/badge";
-import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { ArrowRightIcon, LockIcon, ShieldCheckIcon } from "@/components/ui/icons";
 import { PageHeader } from "@/components/ui/states";
+import {
+  PlatformSettingsTabs,
+  type PlatformSettingsTab,
+} from "@/components/platform/platform-settings-tabs";
+import { PlatformSecuritySection } from "@/components/platform/platform-security-section";
 import { useAuth } from "@/store/auth";
 
 const CAPABILITIES = [
@@ -20,19 +25,13 @@ const CAPABILITIES = [
   { label: "Enter marks or post announcements in a school", allowed: false },
 ];
 
-export default function PlatformSettingsPage() {
+function AccountSection() {
   const user = useAuth((state) => state.user);
 
   if (!user) return null;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader
-        eyebrow="Platform console / Account"
-        title="Platform account"
-        description="The Super Admin sits above every school. This account manages the fleet and holds no membership inside any school."
-      />
-
+    <div className="space-y-6">
       <Card>
         <CardHeader title="Identity" description="One platform role, outside every tenant." />
         <CardBody>
@@ -125,16 +124,24 @@ export default function PlatformSettingsPage() {
           </Card>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <Card>
-        <CardHeader title="Session" description="Signing out ends this browser session." />
-        <CardBody className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-body">
-            Signed in as <span className="text-ink">{user.email}</span>
-          </p>
-          <SignOutButton />
-        </CardBody>
-      </Card>
+export default function PlatformSettingsPage() {
+  const [activeTab, setActiveTab] = useState<PlatformSettingsTab>("account");
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        eyebrow="Platform console / Account"
+        title="Platform account"
+        description="The Super Admin sits above every school. This account manages the fleet and holds no membership inside any school."
+      />
+
+      <PlatformSettingsTabs activeTab={activeTab} onChange={setActiveTab} />
+
+      {activeTab === "account" ? <AccountSection /> : <PlatformSecuritySection />}
     </div>
   );
 }

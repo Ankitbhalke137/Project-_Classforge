@@ -19,6 +19,7 @@ import type {
   CreatedPlatformAdmin,
   ReportCard,
   School,
+  SchoolCalendar,
   SchoolClass,
   SchoolDashboard,
   SchoolIdentity,
@@ -31,6 +32,7 @@ import type {
   TimetableSlot,
   User,
   Membership,
+  NotificationPreferences,
 } from "@/types";
 
 /* ------------------------------------------------------------------ *
@@ -107,6 +109,22 @@ export const authApi = {
       method: "POST",
       body: { email, password },
     }),
+
+  /**
+   * Changes the signed-in account's own password.
+   *
+   * The server asks for the current password, so this cannot be used to take
+   * over an account from a session alone.
+   */
+  changePassword: (body: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }) =>
+    api<{ message: string }>("/api/auth/change-password", {
+      method: "POST",
+      body,
+    }),
 };
 
 /** Super Admin only. */
@@ -118,6 +136,11 @@ export const platformApi = {
     schoolId: string,
     body: { name?: string; slug?: string; status?: School["status"] },
   ) => api<School>(`/api/platform/schools/${schoolId}`, { method: "PATCH", body }),
+  removeSchool: (schoolId: string, force = false) =>
+    api<{ removed: boolean; id: string }>(
+      `/api/platform/schools/${schoolId}${force ? "?force=true" : ""}`,
+      { method: "DELETE" },
+    ),
   stats: () => api<PlatformStats>("/api/platform/stats"),
 
   /* Staff access — who administers each school. */
@@ -343,6 +366,38 @@ export const schoolApi = {
     schoolSlug: string,
     body: Pick<Announcement, "title" | "body" | "audience" | "priority"> & { pinned?: boolean },
   ) => api<Announcement>(`/api/t/${schoolSlug}/announcements`, { method: "POST", body }),
+
+  /* --- Invites --- */
+  /** Adds a person to this school and emails them a temporary password. */
+  invite: (
+    schoolSlug: string,
+    body: { name: string; email: string; role: "TEACHER" | "STUDENT" },
+  ) =>
+    api<{
+      userId: string;
+      name: string;
+      email: string;
+      role: string;
+      schoolName: string;
+      temporaryPassword: string | null;
+      emailSent: boolean;
+    }>(`/api/t/${schoolSlug}/invite`, { method: "POST", body }),
+
+  /* --- Calendar --- */
+  /** This school's academic year, terms and timetable. */
+  getCalendar: (schoolSlug: string) => api<SchoolCalendar>(`/api/t/${schoolSlug}/calendar`),
+
+  /* --- Notification preferences --- */
+  getNotificationPreferences: (schoolSlug: string) =>
+    api<NotificationPreferences>(`/api/t/${schoolSlug}/notification-preferences`),
+  saveNotificationPreferences: (
+    schoolSlug: string,
+    body: NotificationPreferences,
+  ) =>
+    api<NotificationPreferences>(`/api/t/${schoolSlug}/notification-preferences`, {
+      method: "PUT",
+      body,
+    }),
 
   /* --- Fees --- */
   /**

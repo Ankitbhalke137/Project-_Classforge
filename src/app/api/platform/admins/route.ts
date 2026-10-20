@@ -9,6 +9,7 @@ import {
   handleApiError,
 } from "@/lib/errors";
 import { requireSuperAdmin } from "@/lib/platform-auth";
+import { sendCredentialsEmail, appUrl } from "@/lib/mail";
 
 /** The staff roles a Super Admin may hand out. Students are created from a roster. */
 const STAFF_ROLES = ["SCHOOL_ADMIN", "TEACHER"] as const;
@@ -17,6 +18,12 @@ const STAFF_ROLES = ["SCHOOL_ADMIN", "TEACHER"] as const;
 function generateTemporaryPassword(): string {
   return randomBytes(12).toString("base64url");
 }
+
+/** The role as a person would read it in an email, not the database enum. */
+const ROLE_LABEL: Record<string, string> = {
+  SCHOOL_ADMIN: "School Admin",
+  TEACHER: "Teacher",
+};
 
 /**
  * GET /api/platform/admins
@@ -71,10 +78,11 @@ const createAdminSchema = z.object({
  *
  * Gives one person staff access to one school.
  *
- * Email delivery is not configured yet, so a new account is created with a
- * generated password and the password is returned once for the Super Admin to
- * pass on. When SMTP is added, this same endpoint can send it instead — the
- * account and membership already exist, so nothing else has to change.
+ * The account is created with a generated password, which is emailed to them.
+ * The same password is returned once to the Super Admin as a backup — it is
+ * only ever stored as a bcrypt hash, so it cannot be looked up later. If the
+ * email cannot be sent the account still exists and the Super Admin shares the
+ * password by hand.
  *
  * An email that already has an account keeps its name and password; only the
  * membership is added. An account with no password yet (a student imported from
@@ -125,6 +133,21 @@ export async function POST(request: NextRequest) {
       data: { tenantId: school.id, userId: user.id, role },
     });
 
+    // Only a brand new account has a password worth emailing. Someone who
+    // already had one keeps it, and re-sending it would be wrong.
+    let emailSent = false;
+    if (temporaryPassword) {
+      const result = await sendCredentialsEmail({
+        to: user.email,
+        name: user.name,
+        schoolName: school.name,
+        role: ROLE_LABEL[membership.role] ?? membership.role,
+        temporaryPassword,
+        signInUrl: `${appUrl()}/login`,
+      });
+      emailSent = result.sent;
+    }
+
     return NextResponse.json(
       {
         userId: user.id,
@@ -139,6 +162,7 @@ export async function POST(request: NextRequest) {
         // Null when the person already had a working account. The screen only
         // shows the credentials panel when this is present.
         temporaryPassword,
+        emailSent,
       },
       { status: 201 },
     );

@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Table, TBody, TD, TH, THead, TR, TableSkeleton } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/states";
 import { Badge } from "@/components/ui/badge";
 import { useApi } from "@/lib/hooks";
-import { schoolApi } from "@/lib/api";
-import type { Announcement } from "@/types";
+import { ApiError, schoolApi } from "@/lib/api";
+import type { Announcement, NotificationPreferences } from "@/types";
 
 const PRIORITY_TONE: Record<Announcement["priority"], "neutral" | "brand" | "amber" | "red"> = {
   NORMAL: "neutral",
@@ -71,30 +71,70 @@ function RecentAnnouncements({ schoolSlug }: { schoolSlug: string }) {
 
 export function NotificationsSection() {
   const schoolSlug = typeof window !== "undefined" ? window.location.pathname.split("/").filter(Boolean)[0] : "";
-  const [prefs, setPrefs] = useState({
+  const [prefs, setPrefs] = useState<NotificationPreferences>({
     inAppNotifications: true,
     emailNotifications: false,
     classAnnouncements: true,
   });
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Set the moment the person touches a switch. The load below can land after
+  // that, and it must not then undo what they did. A ref, not state: the
+  // promise below needs to read the current value, and state would give it
+  // the value from the render the effect was created in.
+  const edited = useRef(false);
 
-  function handleToggle(key: keyof typeof prefs, checked: boolean) {
+  // The choices belong to the signed-in person, so they are read from the
+  // server rather than kept in component state that resets on reload.
+  useEffect(() => {
+    let cancelled = false;
+
+    schoolApi
+      .getNotificationPreferences(schoolSlug)
+      .then((data) => {
+        // A slow response must not overwrite a switch the person has already
+        // flipped — otherwise the switch springs back on its own, and what
+        // gets saved is not what they set.
+        if (!cancelled && !edited.current) setPrefs(data);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load your notification settings.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [schoolSlug]);
+
+  function handleToggle(key: keyof NotificationPreferences, checked: boolean) {
+    edited.current = true;
     setPrefs((p) => ({ ...p, [key]: checked }));
   }
 
-  function handleSave(event: React.FormEvent) {
+  async function handleSave(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
     setSaved(false);
+    setError(null);
 
-    // There is no backend endpoint for saving notification preferences.
-    setTimeout(() => {
-      setSaving(false);
+    try {
+      const savedPrefs = await schoolApi.saveNotificationPreferences(schoolSlug, prefs);
+      setPrefs(savedPrefs);
       setSaved(true);
-    }, 800);
-
-    setTimeout(() => setSaved(false), 4000);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? (Object.values(err.fields)[0] ?? err.message)
+          : "Could not save your settings. Try again in a moment.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   function toggleRow({
@@ -117,6 +157,10 @@ export function NotificationsSection() {
         <label className="relative inline-flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
+            // The visible text sits in a sibling heading, so the switch has no
+            // accessible name of its own. Without this a screen reader
+            // announces an unnamed checkbox.
+            aria-label={label}
             checked={checked}
             onChange={(event) => handleToggle(key, event.target.checked)}
             className="rounded border-line bg-white text-secondary focus:border-secondary focus:ring-2 focus:ring-secondary-soft"
@@ -165,12 +209,19 @@ export function NotificationsSection() {
                   </span>
                   <span>Notification preferences saved</span>
                 </div>
-              ) : null}
-              <p className="text-xs text-body">
-                Saving notification preferences requires a backend endpoint that is not yet available.
-                Changes above are held locally and will not be persisted.
-              </p>
-              <Button type="submit" variant="primary" isLoading={saving} disabled={saving}>
+              ) : error ? (
+                <p className="text-xs text-danger-600">{error}</p>
+              ) : (
+                <p className="text-xs text-body">
+                  These choices apply to you in this school only.
+                </p>
+              )}
+              <Button
+                type="submit"
+                variant="primary"
+                isLoading={saving}
+                disabled={saving || loading}
+              >
                 Save Changes
               </Button>
             </div>

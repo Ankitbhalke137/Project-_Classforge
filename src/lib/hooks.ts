@@ -11,7 +11,7 @@ import {
   type SchoolArea,
 } from "@/lib/roles";
 import { useAuth } from "@/store/auth";
-import type { Membership, Role, SchoolIdentity } from "@/types";
+import type { Membership, Role, SchoolCalendar, SchoolIdentity } from "@/types";
 
 /**
  * The school in the URL. Read from the pathname rather than from a layout prop,
@@ -53,7 +53,7 @@ export { canPerform };
 
 /**
  * A suspended school can be read but not written to. Screens combine this with
- * the role's own permissions, and the mock API refuses the write either way.
+ * the role's own permissions, and the backend refuses the write either way.
  */
 export function useIsReadOnly(): boolean {
   return useMembership()?.status === "SUSPENDED";
@@ -94,6 +94,27 @@ export function useIdentity(): { identity: SchoolIdentity | null; loading: boole
   );
 
   return { identity: data, loading };
+}
+
+/**
+ * The school's own academic calendar — its year, its terms and its timetable.
+ *
+ * Every school keeps its own, so the calendar is read per school rather than
+ * assumed. A school with no calendar set up yet gets empty arrays, not
+ * invented dates.
+ */
+export function useSchoolCalendar(): {
+  calendar: SchoolCalendar | null;
+  loading: boolean;
+} {
+  const schoolSlug = useSchoolSlug();
+
+  const { data, loading } = useApi(
+    () => schoolApi.getCalendar(schoolSlug ?? ""),
+    [schoolSlug],
+  );
+
+  return { calendar: data, loading };
 }
 
 /**

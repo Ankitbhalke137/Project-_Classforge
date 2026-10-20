@@ -135,7 +135,7 @@ function PlatformAdminsContent() {
       <PageHeader
         eyebrow="Platform console / Access"
         title="School admins"
-        description="Give one person staff access to one school, change their role, or deactivate them. Accounts are created immediately; email delivery is not connected yet, so you pass the first password on yourself."
+        description="Give one person staff access to one school, change their role, or deactivate them. The account is created immediately and the first password is emailed to them."
         action={<Button onClick={() => setAddOpen(true)}>Invite school admin</Button>}
       />
 
@@ -504,8 +504,9 @@ function AddAdminModal({
           {created.temporaryPassword ? (
             <div className="space-y-3">
               <p className="text-sm text-body">
-                Share these credentials with them. This password is shown once and cannot be
-                retrieved later.
+                {created.emailSent
+                  ? "We sent these credentials to them by email. The password is shown here once as a backup and cannot be retrieved later."
+                  : "The email could not be sent, so share these credentials with them. The password is shown once and cannot be retrieved later."}
               </p>
               <div className="rounded-xl border border-line bg-page px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
@@ -524,10 +525,6 @@ function AddAdminModal({
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-muted">
-                Email delivery is not configured yet. When SMTP is added, this password can be
-                sent automatically instead.
-              </p>
             </div>
           ) : (
             <p className="text-sm text-body">

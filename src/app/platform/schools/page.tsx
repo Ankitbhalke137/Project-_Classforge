@@ -19,16 +19,9 @@ import type { School } from "@/types";
 
 type StatusFilter = "ALL" | "ACTIVE" | "SUSPENDED";
 
-/**
- * The backend has no PATCH /api/platform/schools/:id yet. This frontend is
- * built against that contract, so a 404 is reported as what it is rather than
- * as a generic failure.
- */
+/** Pulls the most useful message out of an API error. */
 function describeActionError(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
-    if (error.status === 404) {
-      return "This is the frontend only for now — the action needs PATCH /api/platform/schools/:id, which is not connected yet.";
-    }
     const fieldMessage = Object.values(error.fields)[0];
     return fieldMessage ?? error.message;
   }
@@ -45,6 +38,7 @@ export default function SchoolsPage() {
   const [provisionOpen, setProvisionOpen] = useState(false);
   const [editing, setEditing] = useState<School | null>(null);
   const [suspending, setSuspending] = useState<School | null>(null);
+  const [deleting, setDeleting] = useState<School | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -90,6 +84,21 @@ export default function SchoolsPage() {
     } catch (error) {
       setEditing(null);
       setNotice(describeActionError(error, "Could not save the school."));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function deleteSchool(school: School) {
+    setPendingId(school.id);
+    setNotice(null);
+    try {
+      await platformApi.removeSchool(school.id);
+      setDeleting(null);
+      schools.reload();
+    } catch (error) {
+      setDeleting(null);
+      setNotice(describeActionError(error, "Could not delete the school."));
     } finally {
       setPendingId(null);
     }
@@ -264,6 +273,15 @@ export default function SchoolsPage() {
                           >
                             {school.status === "ACTIVE" ? "Suspend" : "Activate"}
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy || school.status !== "SUSPENDED"}
+                            className="text-danger-600 hover:bg-danger-50 disabled:text-muted"
+                            onClick={() => setDeleting(school)}
+                          >
+                            Delete
+                          </Button>
                         </div>
                       </TD>
                     </TR>
@@ -311,6 +329,20 @@ export default function SchoolsPage() {
         }
         confirmLabel="Suspend school"
         isPending={suspending !== null && pendingId === suspending.id}
+      />
+
+      <ConfirmModal
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => (deleting ? void deleteSchool(deleting) : undefined)}
+        title="Delete school"
+        message={
+          deleting
+            ? `This permanently deletes ${deleting.name} and everything in it — students, teachers, classes, marks and enrolments. It cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete school"
+        isPending={deleting !== null && pendingId === deleting.id}
       />
     </div>
   );
