@@ -58,12 +58,25 @@ export const SCHOOL_NAV: NavItem[] = [
 /**
  * The URL for a screen.
  *
- * Accepts a bare area — `schoolHref("greenfield", "students")` — or a NavItem,
+ * Accepts a bare path — `schoolHref("greenfield", "students")` — or a NavItem,
  * which is how the sidebar reaches screens whose route is named differently.
  */
-export function schoolHref(schoolSlug: string, target: SchoolArea | NavItem): string {
+export function schoolHref(schoolSlug: string, target: string | NavItem): string {
   const path = typeof target === "string" ? target : (target.path ?? target.area);
   return `/${schoolSlug}/${path}`;
+}
+
+/**
+ * The URL for the screen guarded by a given area.
+ *
+ * Use this rather than `schoolHref` when the caller holds a permission key
+ * instead of a route: it resolves through the nav table, so an area whose route
+ * is named differently — Reports is guarded by `report-cards` — still lands on a
+ * URL that exists.
+ */
+export function schoolHrefForArea(schoolSlug: string, area: SchoolArea): string {
+  const item = SCHOOL_NAV.find((candidate) => candidate.area === area);
+  return schoolHref(schoolSlug, item ?? area);
 }
 
 /** Drops the items this role cannot open. */

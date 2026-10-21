@@ -59,6 +59,70 @@ export interface PlatformStats {
   tenantLimit: number;
 }
 
+/**
+ * What one person wants to hear about, inside one school.
+ */
+export interface NotificationPreferences {
+  inAppNotifications: boolean;
+  emailNotifications: boolean;
+  classAnnouncements: boolean;
+}
+
+/**
+ * A school's own academic calendar — the year, its terms and its timetable.
+ * Each school keeps its own, so nothing here is assumed.
+ */
+export interface SchoolCalendar {
+  academicYear: {
+    name: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  } | null;
+  terms: {
+    label: string;
+    startDate: string;
+    endDate: string;
+    position: number;
+  }[];
+  periods: {
+    period: number;
+    startTime: string;
+    endTime: string;
+    label: string;
+  }[];
+  /** The gaps between the periods, worked out from the times. */
+  breaks: string;
+}
+
+/* ---------- Platform access ---------- */
+
+/** The staff roles a Super Admin can assign. Students come from a roster. */
+export const STAFF_ROLES = ["SCHOOL_ADMIN", "TEACHER"] as const;
+export type StaffRole = (typeof STAFF_ROLES)[number];
+
+/** One person's staff access to one school. A membership is this pair. */
+export interface PlatformAdmin {
+  userId: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  role: StaffRole;
+  status: "ACTIVE" | "INACTIVE";
+  schoolId: string;
+  schoolName: string;
+  schoolSlug: string;
+}
+
+/** The create response, with the one-time password when the account is new. */
+export interface CreatedPlatformAdmin extends PlatformAdmin {
+  temporaryPassword: string | null;
+  /** True when the invite email with the temporary password went out. */
+  emailSent: boolean;
+  /** Why the email did not go out. Null when it did, or when there was none to send. */
+  emailError?: string | null;
+}
+
 /* ---------- People inside a school ---------- */
 
 export const GENDERS = ["FEMALE", "MALE", "OTHER"] as const;
@@ -71,18 +135,29 @@ export interface Student {
   admissionNo: string;
   className: string;
   status: "ACTIVE" | "INACTIVE";
-  /** Foreign key to SchoolClass. className stays for table cells and exports. */
-  classId: string;
-  grade: string;
-  section: string;
-  gender: Gender;
-  dateOfBirth: string;
-  phone: string;
-  address: string;
-  bloodGroup: string;
-  /** Who to call. Null only for students whose guardian record is missing. */
-  parentId: string | null;
-  admittedOn: string;
+  // CRUD/API fields
+  firstName?: string;
+  lastName?: string;
+  classId?: string | null;
+  sectionId?: string | null;
+  sectionName?: string | null;
+  academicYearId?: string | null;
+  dateOfBirth?: string | null;
+  createdAt?: string;
+  enrolmentStatus?: string | null;
+  guardianName?: string | null;
+  guardianPhone?: string | null;
+
+  // Fields the API may not have a column behind yet — they come back empty
+  // rather than being invented.
+  grade?: string;
+  section?: string;
+  gender?: Gender;
+  phone?: string | null;
+  address?: string;
+  bloodGroup?: string;
+  parentId?: string | null;
+  admittedOn?: string;
 }
 
 export interface Teacher {
@@ -99,6 +174,9 @@ export interface Teacher {
   subjectIds: string[];
   /** Classes this teacher teaches or is homeroom of. */
   classIds: string[];
+  /** Membership state in this school. A deactivated teacher keeps their row. */
+  status: "ACTIVE" | "INACTIVE";
+  userId?: string | null;
 }
 
 export interface Parent {
@@ -118,24 +196,70 @@ export interface Subject {
   name: string;
   /** Short code used in timetables and report cards, e.g. "PHY". */
   code: string;
-  /** Grades this subject is offered in. */
-  grades: string[];
-  /** Out of the full marks for an exam in this subject. */
-  maxMarks: number;
+  classId: string;
+  className: string;
+  teacherCount: number;
+}
+
+export interface AcademicTerm {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  position: number;
+}
+
+export interface AcademicYear {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: "UPCOMING" | "ACTIVE" | "COMPLETED";
+  classCount: number;
+  studentCount: number;
+  terms: AcademicTerm[];
+}
+
+export interface TimetablePeriod {
+  id: string;
+  period: number;
+  startTime: string;
+  endTime: string;
+  label: string | null;
+}
+
+/** A teacher being responsible for one subject in one section. */
+export interface TeachingAssignment {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  sectionId: string;
+  classId: string;
+  sectionName: string;
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
 }
 
 /** A section of a grade — "Grade 10 · A" is one class, not the whole grade. */
 export interface SchoolClass {
+  /** The section id (or the class id when the class has no sections yet). */
   id: string;
+  /** The parent class, for filters that span all of its sections. */
+  classId?: string;
   name: string;
   grade: string;
   section: string;
   room: string;
   /** The teacher responsible for this class. Null while the post is vacant. */
   homeroomTeacherId: string | null;
+  homeroomTeacherName?: string | null;
   subjectIds: string[];
   studentCount: number;
   capacity: number;
+  academicYearId?: string;
+  academicYear?: { id: string; name: string; status: string };
+  sectionCount?: number;
 }
 
 export const WEEKDAYS = [
@@ -219,7 +343,7 @@ export interface AttendanceTrendPoint {
 
 /* ---------- Exams & grades ---------- */
 
-export const EXAM_STATUSES = ["SCHEDULED", "IN_PROGRESS", "PUBLISHED"] as const;
+export const EXAM_STATUSES = ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
 export type ExamStatus = (typeof EXAM_STATUSES)[number];
 
 export interface Exam {
@@ -235,6 +359,13 @@ export interface Exam {
   status: ExamStatus;
   /** Set once results are released. */
   publishedAt: string | null;
+  subjectName?: string;
+  sectionId?: string;
+  sectionName?: string;
+  className?: string;
+  /** How many students already have a mark. */
+  markedCount?: number;
+  studentCount?: number;
 }
 
 /** Percentage at or above which a grade is awarded. Ordered high to low. */
@@ -258,6 +389,8 @@ export interface ExamResult {
   marksObtained: number | null;
   grade: Grade | null;
   remarks: string | null;
+  studentName?: string;
+  admissionNo?: string;
 }
 
 export interface ReportCardRow {

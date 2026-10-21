@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { SessionGate } from "@/components/auth/session-gate";
-import { MockProvider } from "@/mocks/provider";
 
 export const metadata: Metadata = {
   title: { default: "ClassForge", template: "%s · ClassForge" },
@@ -24,9 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${jakarta.variable} h-full`}>
       <body className="flex min-h-full flex-col font-sans">
-        <MockProvider>
-          <SessionGate>{children}</SessionGate>
-        </MockProvider>
+        <SessionGate>{children}</SessionGate>
       </body>
     </html>
   );

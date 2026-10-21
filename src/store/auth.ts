@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { authApi } from "@/lib/api";
+import { api, authApi } from "@/lib/api";
 import type { Membership, User } from "@/types";
 
 // sessionStorage, not localStorage: closing the tab signs you out.
@@ -15,7 +15,7 @@ interface AuthState {
 
   restore: () => void;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const useAuth = create<AuthState>((set) => ({
@@ -42,8 +42,12 @@ export const useAuth = create<AuthState>((set) => ({
     set({ user: result.user, schools: result.schools });
   },
 
-  logout: () => {
+  logout: async () => {
+  try {
+    await api("/api/auth/logout", { method: "POST" });
+  } finally {
     sessionStorage.removeItem(STORAGE_KEY);
-    set({ user: null, schools: [] });
-  },
+    set({ user: null, schools: [], ready: true });
+  }
+},
 }));

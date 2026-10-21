@@ -1,0 +1,45 @@
+import { NextRequest, NextResponse } from "next/server";
+import { resolveTenantContext } from "@/lib/tenant-context";
+import { handleApiError, NotFoundError } from "@/lib/errors";
+import { getTimetable, replaceTimetable } from "@/lib/services/academic-service";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const READ_ROLES = ["SCHOOL_ADMIN", "TEACHER", "STUDENT"] as const;
+
+/**
+ * GET /api/t/:tenantSlug/classes/:id/timetable
+ *
+ * `:id` is the section id returned by the classes list. It is called a class in
+ * the UI because "Grade 6 - A" reads as one class there.
+ */
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string; id: string }> },
+) {
+  try {
+    const { tenantSlug, id } = await context.params;
+    if (!UUID.test(id)) throw new NotFoundError("Class not found.");
+    const { tenant } = await resolveTenantContext(request, tenantSlug, [...READ_ROLES]);
+    const result = await getTimetable(tenant.id, id);
+    return NextResponse.json(result.slots);
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+/** Replaces the whole weekly grid for one section. */
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string; id: string }> },
+) {
+  try {
+    const { tenantSlug, id } = await context.params;
+    if (!UUID.test(id)) throw new NotFoundError("Class not found.");
+    const { tenant } = await resolveTenantContext(request, tenantSlug, ["SCHOOL_ADMIN"]);
+    const body: unknown = await request.json().catch(() => null);
+    const result = await replaceTimetable(tenant.id, id, body);
+    return NextResponse.json(result.slots);
+  } catch (error) {
+    return handleApiError(error);
+  }
+}

@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { AlertIcon, EyeIcon, EyeOffIcon, ShieldCheckIcon } from "@/components/ui/icons";
 import { ApiError } from "@/lib/api";
 import { landingPath } from "@/lib/nav";
-import { ACCOUNTS, DEMO_PASSWORD } from "@/mocks/data";
 import { useAuth } from "@/store/auth";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,7 +27,7 @@ export function LoginForm() {
   const [formHint, setFormHint] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  /** Same checks the mock backend makes, run early so the fields can speak first. */
+  /** The same checks the server makes, run early so the fields can speak first. */
   function validate(): FieldErrors {
     const next: FieldErrors = {};
     if (!email.trim()) next.email = "Enter your email address.";
@@ -61,14 +60,6 @@ export function LoginForm() {
       setFormHint(rejected ? "Check your details and try again." : null);
       setBusy(false);
     }
-  }
-
-  function fillDemoAccount(accountEmail: string) {
-    setEmail(accountEmail);
-    setPassword(DEMO_PASSWORD);
-    setErrors({});
-    setFormError(null);
-    setFormHint(null);
   }
 
   return (
@@ -213,8 +204,6 @@ export function LoginForm() {
               </form>
             </div>
 
-            <DemoAccounts onPick={fillDemoAccount} />
-
             <p className="mt-8 text-center text-xs text-body">
               © {new Date().getFullYear()} ClassForge. All rights reserved.
             </p>
@@ -222,34 +211,5 @@ export function LoginForm() {
         </div>
       </main>
     </div>
-  );
-}
-
-/**
- * Not in the marketing mockups, but the app runs on mocked accounts — so the
- * list stays, collapsed, so every role can be tried in one click.
- */
-function DemoAccounts({ onPick }: { onPick: (email: string) => void }) {
-  return (
-    <details className="mt-6 rounded-xl border border-line bg-page px-4 py-3">
-      <summary className="cursor-pointer list-none text-xs font-medium text-body marker:content-none hover:text-ink">
-        Demo accounts · password <span className="font-mono text-ink">{DEMO_PASSWORD}</span>
-      </summary>
-
-      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-        {Object.entries(ACCOUNTS).map(([accountEmail, account]) => (
-          <li key={accountEmail}>
-            <button
-              type="button"
-              onClick={() => onPick(accountEmail)}
-              className="w-full rounded-lg border border-line bg-white p-2.5 text-left transition-colors hover:border-brand-300 hover:bg-brand-50"
-            >
-              <span className="block truncate text-xs font-medium text-ink">{accountEmail}</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-body">{account.label}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </details>
   );
 }
