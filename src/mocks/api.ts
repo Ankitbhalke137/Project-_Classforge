@@ -598,12 +598,20 @@ function schoolHandlers(slug: string) {
     }),
 
     http.get(`/api/t/${slug}/students/:id/report-card`, ({ params, request }) => {
-      const student = STUDENT_BY_ID.get(params.id as string);
-      if (!student) return notFound("That student");
-
       const url = new URL(request.url);
       const term = url.searchParams.get("term") ?? "Term 1";
       const email = url.searchParams.get("email") ?? undefined;
+
+      // The client passes "me" when asking for the signed-in student's own card.
+      // Resolve it to a real student id from the session account.
+      let studentId = params.id as string;
+      if (studentId === "me" && email) {
+        const account = ACCOUNTS[email];
+        studentId = account?.person.studentId ?? "";
+      }
+
+      const student = studentId ? STUDENT_BY_ID.get(studentId) : null;
+      if (!student) return notFound("That student");
 
       // A student may only view their own report card. Staff may view any
       // student's card. The signed-in account is identified by ?email= so the
@@ -611,7 +619,7 @@ function schoolHandlers(slug: string) {
       if (email) {
         const account = ACCOUNTS[email];
         const accountStudentId = account?.person.studentId;
-        if (accountStudentId && accountStudentId !== params.id) {
+        if (accountStudentId && accountStudentId !== student.id) {
           return notFound("That student");
         }
       }

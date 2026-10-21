@@ -124,7 +124,7 @@ export const schoolApi = {
     api<Student>(`/api/t/${schoolSlug}/students/${studentId}`),
   getStudentAttendance: (schoolSlug: string, studentId: string, params: { days?: number } = {}) =>
     api<StudentAttendance>(withQuery(`/api/t/${schoolSlug}/students/${studentId}/attendance`, params)),
-  getReportCard: (schoolSlug: string, studentId: string, params: { term: string }) =>
+  getReportCard: (schoolSlug: string, studentId: string, params: { term: string; email?: string }) =>
     api<ReportCard>(withQuery(`/api/t/${schoolSlug}/students/${studentId}/report-card`, params)),
   listTeachers: (schoolSlug: string) =>
     api<Teacher[]>(`/api/t/${schoolSlug}/teachers`),

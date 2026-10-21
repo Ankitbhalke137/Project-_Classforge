@@ -8,6 +8,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/table";
 import { useApi, useIdentity, useMembership, useRole } from "@/lib/hooks";
+import { useAuth } from "@/store/auth";
 import { examService } from "@/lib/services/exam-service";
 import { cn } from "@/lib/utils";
 import type { ReportCard } from "@/types";
@@ -28,6 +29,7 @@ export default function ReportCardPage({
   const role = useRole();
   const { identity, loading: identityLoading } = useIdentity();
   const student = identity?.student ?? null;
+  const email = useAuth((state) => state.user?.email ?? "");
   const isStudent = role === "STUDENT";
 
   const searchParams = new URLSearchParams(
@@ -36,8 +38,12 @@ export default function ReportCardPage({
   const term = searchParams.get("term") ?? "Term 1";
 
   const { data, loading, error } = useApi(
-    () => examService.getOwnReportCard(schoolSlug, { term }),
-    [schoolSlug, term, isStudent],
+    () =>
+      examService.getOwnReportCard(schoolSlug, {
+        term,
+        email: isStudent ? email : undefined,
+      }),
+    [schoolSlug, term, isStudent, email],
   );
 
   if (!studentId) return null;

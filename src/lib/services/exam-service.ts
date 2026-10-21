@@ -35,8 +35,14 @@ export const examService = {
 
   /** The signed-in student's own report card for a term. The student id is
    *  resolved from the session by the backend, never accepted from the client. */
-  getOwnReportCard: (schoolSlug: string, params: { term: string }) =>
-    schoolApi.getReportCard(schoolSlug, "me", params),
+  getOwnReportCard: (
+    schoolSlug: string,
+    params: { term: string; email?: string },
+  ) =>
+    schoolApi.getReportCard(schoolSlug, "me", {
+      ...params,
+      email: params.email,
+    }),
 
   /** A class's report cards for a published term (staff only). */
   listClassReportCards: (schoolSlug: string, params: { classId: string; term: string }) =>
