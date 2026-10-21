@@ -39,13 +39,19 @@ const STATUS_INFO: {
   },
 ];
 
-const DEFAULT_POLICY = {
+interface AttendancePolicy {
+  allowTeacherEdit: boolean;
+  requireParentNoteForExcused: boolean;
+  lateThresholdMinutes: number;
+}
+
+const DEFAULT_POLICY: AttendancePolicy = {
   allowTeacherEdit: true,
   requireParentNoteForExcused: false,
   lateThresholdMinutes: 15,
 };
 
-function getInitialPolicy(storageKey: string) {
+function getInitialPolicy(storageKey: string): AttendancePolicy {
   if (typeof window === "undefined") return DEFAULT_POLICY;
   try {
     const stored = localStorage.getItem(storageKey);
@@ -66,7 +72,7 @@ export function AttendanceSettingsSection() {
   const readOnly = useIsReadOnly();
   const storageKey = `classforge_${schoolSlug || "default"}_attendance_policy`;
 
-  const [policy, setPolicy] = useState(() => getInitialPolicy(storageKey));
+  const [policy, setPolicy] = useState<AttendancePolicy>(() => getInitialPolicy(storageKey));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
