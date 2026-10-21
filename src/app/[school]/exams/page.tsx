@@ -6,9 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
+import { schoolApi } from "@/lib/api";
 import { useApi, useIdentity, useMembership, useRole } from "@/lib/hooks";
 import { useAuth } from "@/store/auth";
-import { examService } from "@/lib/services/exam-service";
 import type { Exam } from "@/types";
 
 export default function ExamsPage() {
@@ -20,21 +20,17 @@ export default function ExamsPage() {
   const isStudent = role === "STUDENT";
 
   const { data, loading, error } = useApi(
-    () =>
-      examService.listExams(schoolSlug, {
-        mine: isStudent,
-        email: isStudent ? email : undefined,
-      }),
-    [schoolSlug, role, isStudent],
+    () => schoolApi.listExams(schoolSlug, {}),
+    [schoolSlug],
   );
 
   const exams = useMemo(() => {
     let rows = (data?.data ?? []) as Exam[];
 
     if (isStudent && student) {
-      // Students only see published exams for their own class.
+      // Students only see completed exams for their own class.
       rows = rows.filter(
-        (exam) => exam.status === "PUBLISHED" && exam.classId === student.classId,
+        (exam) => exam.status === "COMPLETED" && exam.classId === student.classId,
       );
     }
 
@@ -84,9 +80,10 @@ export default function ExamsPage() {
                         </THead>
                         <TBody>
                           {exams.map((exam) => {
-                            // The API already composes "Subject — Exam" into
-                            // `name`, so there is nothing to look up.
-                            const className = exam.classId || "—";
+                            const subjectName =
+                              exam.subjectName || `Subject ${exam.subjectId}`;
+                            const className =
+                              exam.className || `Class ${exam.classId}`;
                             const statusTone =
                               exam.status === "SCHEDULED"
                                 ? "neutral"
@@ -103,7 +100,7 @@ export default function ExamsPage() {
                                 </TD>
                                 <TD>
                                   <Badge tone="brand" className="text-xs">
-                                    {exam.subjectId || "—"}
+                                    {subjectName}
                                   </Badge>
                                 </TD>
                                 <TD>{className}</TD>

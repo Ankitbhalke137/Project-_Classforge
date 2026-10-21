@@ -7,12 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table } from "@/components/ui/table";
+import { schoolApi } from "@/lib/api";
 import { useApi, useIdentity, useMembership, useRole } from "@/lib/hooks";
 import { useAuth } from "@/store/auth";
-import { examService } from "@/lib/services/exam-service";
 import { cn } from "@/lib/utils";
 import type { ReportCard } from "@/types";
-import { SUBJECT_BY_ID } from "@/mocks/fixtures";
 
 export default function ReportCardPage({
   params,
@@ -37,16 +36,12 @@ export default function ReportCardPage({
   );
   const term = searchParams.get("term") ?? "Term 1";
 
-  const { data, loading, error } = useApi(
-    () =>
-      examService.getOwnReportCard(schoolSlug, {
-        term,
-        email: isStudent ? email : undefined,
-      }),
-    [schoolSlug, term, isStudent, email],
-  );
-
   if (!studentId) return null;
+
+  const { data, loading, error } = useApi(
+    () => schoolApi.getReportCard(schoolSlug, studentId, { term }),
+    [schoolSlug, studentId, term],
+  );
 
   if (isStudent && student && student.id !== studentId) {
     notFound();
@@ -162,10 +157,7 @@ export default function ReportCardPage({
                 </THead>
                 <TBody>
                   {reportCard.rows.map((row) => {
-                    const subjectName =
-                      row.subjectId && SUBJECT_BY_ID?.get(row.subjectId)
-                        ? SUBJECT_BY_ID.get(row.subjectId)?.name
-                        : row.subjectName;
+                    const subjectName = row.subjectName;
                     const scoreTone =
                       row.marksObtained === null
                         ? "neutral"

@@ -12,7 +12,6 @@ import { schoolApi } from "@/lib/api";
 import { useApi, useMembership, useRole } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import type { Exam, ExamResult } from "@/types";
-import { SUBJECT_BY_ID, STUDENT_BY_ID, CLASS_BY_ID } from "@/mocks/fixtures";
 
 export default function ExamResultsPage({
   params,
@@ -66,10 +65,8 @@ export default function ExamResultsPage({
           <CardHeader
             title="Exam"
             description={
-              exam.classId
-                ? `Class ${CLASS_BY_ID.get(exam.classId)?.name ?? exam.classId} · ${
-                    exam.subjectId ? SUBJECT_BY_ID.get(exam.subjectId)?.name ?? exam.subjectId : ""
-                  }`
+              exam.className
+                ? `Class ${exam.className} · ${exam.subjectName || ""}`
                 : ""
             }
           />
@@ -93,7 +90,7 @@ export default function ExamResultsPage({
                 </p>
                 <p className="text-lg font-semibold text-primary">
                   <Badge
-                    tone={exam.status === "PUBLISHED" ? "green" : exam.status === "IN_PROGRESS" ? "amber" : "neutral"}
+                    tone={exam.status === "COMPLETED" ? "green" : exam.status === "IN_PROGRESS" ? "amber" : "neutral"}
                     className="text-xs"
                   >
                     {exam.status}
@@ -110,7 +107,7 @@ export default function ExamResultsPage({
               </div>
             </div>
 
-            {isAdmin && exam.status !== "PUBLISHED" && (
+            {isAdmin && exam.status !== "COMPLETED" && (
               <Button
                 onClick={async () => {
                   try {
@@ -148,7 +145,6 @@ export default function ExamResultsPage({
                 </THead>
                 <TBody>
                   {results.map((result) => {
-                    const student = STUDENT_BY_ID.get(result.studentId);
                     const marksTone =
                       result.marksObtained === null
                         ? "neutral"
@@ -160,11 +156,11 @@ export default function ExamResultsPage({
                       <TR key={result.id}>
                         <TD>
                           <span className="font-medium text-slate-900 truncate">
-                            {student?.name ?? result.studentId}
+                            {result.studentName}
                           </span>
                         </TD>
                         <TD className="text-xs text-body truncate">
-                          {student?.admissionNo ?? "—"}
+                          {result.admissionNo ?? "—"}
                         </TD>
                         <TD>
                           {result.marksObtained === null ? (
