@@ -34,7 +34,9 @@ export function Modal({
   // inside the modal would re-run it and pull focus off the field onto the
   // panel, so only the first character ever landed.
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   // Escape closes, and the page behind must not scroll.
   useEffect(() => {

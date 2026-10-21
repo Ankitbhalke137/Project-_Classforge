@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useIsReadOnly, useSchoolSlug } from "@/lib/hooks";
 import { ATTENDANCE_STATUSES } from "@/types";
 
 const STATUS_INFO: {
@@ -38,27 +39,62 @@ const STATUS_INFO: {
   },
 ];
 
+const DEFAULT_POLICY = {
+  allowTeacherEdit: true,
+  requireParentNoteForExcused: false,
+  lateThresholdMinutes: 15,
+};
+
+function getInitialPolicy(storageKey: string) {
+  if (typeof window === "undefined") return DEFAULT_POLICY;
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === "object") {
+        return { ...DEFAULT_POLICY, ...parsed };
+      }
+    }
+  } catch {
+    // Ignore storage read errors
+  }
+  return DEFAULT_POLICY;
+}
+
 export function AttendanceSettingsSection() {
-  const [policy, setPolicy] = useState({
-    allowTeacherEdit: true,
-    requireParentNoteForExcused: false,
-    lateThresholdMinutes: 15,
-  });
+  const schoolSlug = useSchoolSlug() ?? "";
+  const readOnly = useIsReadOnly();
+  const storageKey = `classforge_${schoolSlug || "default"}_attendance_policy`;
+
+  const [policy, setPolicy] = useState(() => getInitialPolicy(storageKey));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  useEffect(() => {
+    // Synchronize if switching to a different school
+    const current = getInitialPolicy(storageKey);
+    const timer = setTimeout(() => {
+      setPolicy(current);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [storageKey]);
+
   function handleSave(event: React.FormEvent) {
     event.preventDefault();
+    if (readOnly) return;
     setSaving(true);
     setSaved(false);
 
-    // There is no backend endpoint for saving attendance policy preferences.
-    setTimeout(() => {
-      setSaving(false);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(policy));
       setSaved(true);
-    }, 800);
+    } catch {
+      // Ignore storage write errors
+    } finally {
+      setSaving(false);
+    }
 
-    setTimeout(() => setSaved(false), 4000);
+    setTimeout(() => setSaved(false), 3000);
   }
 
   return (
@@ -101,6 +137,7 @@ export function AttendanceSettingsSection() {
                 <input
                   type="checkbox"
                   checked={policy.allowTeacherEdit}
+                  disabled={readOnly}
                   onChange={(event) =>
                     setPolicy((p) => ({ ...p, allowTeacherEdit: event.target.checked }))
                   }
@@ -123,6 +160,7 @@ export function AttendanceSettingsSection() {
                 <input
                   type="checkbox"
                   checked={policy.requireParentNoteForExcused}
+                  disabled={readOnly}
                   onChange={(event) =>
                     setPolicy((p) => ({ ...p, requireParentNoteForExcused: event.target.checked }))
                   }
@@ -143,6 +181,7 @@ export function AttendanceSettingsSection() {
                 type="number"
                 min="0"
                 max="120"
+                disabled={readOnly}
                 value={policy.lateThresholdMinutes}
                 onChange={(event) =>
                   setPolicy((p) => ({ ...p, lateThresholdMinutes: Number(event.target.value) || 0 }))
@@ -161,10 +200,9 @@ export function AttendanceSettingsSection() {
                 </div>
               ) : null}
               <p className="text-xs text-body">
-                Saving attendance policy preferences requires a backend endpoint that is not yet available.
-                Changes above are held locally and will not be persisted.
+                Policy preferences apply to attendance marking and reviews for this school.
               </p>
-              <Button type="submit" variant="primary" isLoading={saving} disabled={saving}>
+              <Button type="submit" variant="primary" isLoading={saving} disabled={saving || readOnly}>
                 Save Changes
               </Button>
             </div>

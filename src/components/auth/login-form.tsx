@@ -6,6 +6,7 @@ import { Logo } from "@/components/brand/logo";
 import { SchoolIllustration } from "@/components/brand/school-illustration";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import { AlertIcon, EyeIcon, EyeOffIcon, ShieldCheckIcon } from "@/components/ui/icons";
 import { ApiError } from "@/lib/api";
 import { landingPath } from "@/lib/nav";
@@ -26,6 +27,7 @@ export function LoginForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formHint, setFormHint] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
 
   /** The same checks the server makes, run early so the fields can speak first. */
   function validate(): FieldErrors {
@@ -186,6 +188,7 @@ export function LoginForm() {
                 <div className="-mt-2 flex justify-end">
                   <button
                     type="button"
+                    onClick={() => setShowForgotPasswordModal(true)}
                     className="rounded text-sm font-medium text-brand-600 hover:text-brand-700"
                   >
                     Forgot password?
@@ -203,6 +206,51 @@ export function LoginForm() {
                 </Button>
               </form>
             </div>
+
+            <Modal
+              open={showForgotPasswordModal}
+              onClose={() => setShowForgotPasswordModal(false)}
+              title="Forgot your password?"
+              description="Account recovery and password reset information"
+              footer={
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={() => setShowForgotPasswordModal(false)}
+                >
+                  Got it
+                </Button>
+              }
+            >
+              <div className="space-y-4 text-sm text-body">
+                <p>
+                  For platform and school security, user passwords in ClassForge are issued and reset through your school or system administrator.
+                </p>
+                <div className="rounded-xl border border-line bg-page p-4">
+                  <h4 className="font-medium text-ink">How to reset your access:</h4>
+                  <ul className="mt-2 list-disc space-y-1.5 pl-5">
+                    <li>
+                      <strong>Teachers & Staff:</strong> Contact your School Admin or IT administrator. They can re-issue and email a temporary password to you from staff management.
+                    </li>
+                    <li>
+                      <strong>Students:</strong> Contact your school office or homeroom teacher to verify your credentials.
+                    </li>
+                    <li>
+                      <strong>School Administrators:</strong> Contact the ClassForge Super Admin to reset your school administration account.
+                    </li>
+                  </ul>
+                </div>
+                {email.trim() ? (
+                  <p className="text-xs text-muted">
+                    Entered email: <span className="font-mono text-ink">{email.trim()}</span>. Provide this email to your administrator to locate your account quickly.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted">
+                    Once your administrator sends a temporary password, sign in and update it under Account Security.
+                  </p>
+                )}
+              </div>
+            </Modal>
 
             <p className="mt-8 text-center text-xs text-body">
               © {new Date().getFullYear()} ClassForge. All rights reserved.
