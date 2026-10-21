@@ -1,41 +1,63 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo } from "react";
 import { RequireArea } from "@/components/auth/guards";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
-import { useApi, useMembership, useRole } from "@/lib/hooks";
-import { schoolApi } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { useApi, useIdentity, useMembership, useRole } from "@/lib/hooks";
+import { useAuth } from "@/store/auth";
+import { examService } from "@/lib/services/exam-service";
 import type { Exam } from "@/types";
 import { SUBJECT_BY_ID, CLASS_BY_ID } from "@/mocks/fixtures";
 
 export default function ExamsPage() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
   const role = useRole();
+  const { identity, loading: identityLoading } = useIdentity();
+  const student = identity?.student ?? null;
+  const email = useAuth((state) => state.user?.email ?? "");
+  const isStudent = role === "STUDENT";
 
   const { data, loading, error } = useApi(
-    () => schoolApi.listExams(schoolSlug, {}),
-    [schoolSlug],
+    () =>
+      examService.listExams(schoolSlug, {
+        mine: isStudent,
+        email: isStudent ? email : undefined,
+      }),
+    [schoolSlug, role, isStudent],
   );
 
-  const exams = data?.data ?? [];
+  const exams = useMemo(() => {
+    let rows = (data?.data ?? []) as Exam[];
+
+    if (isStudent && student) {
+      // Students only see published exams for their own class.
+      rows = rows.filter(
+        (exam) => exam.status === "PUBLISHED" && exam.classId === student.classId,
+      );
+    }
+
+    return rows;
+  }, [data, isStudent, student]);
 
   return (
     <RequireArea area="exams">
       <div className="space-y-6">
         <PageHeader
           title="Exams & Grades"
-          description="Create exams, set maximum marks and enter results."
+          description={
+            isStudent
+              ? "Your published results across terms."
+              : "Create exams, set maximum marks and enter results."
+          }
         />
 
         <Card>
           <CardHeader title="Exams" description="Exam sessions across terms" />
           <CardBody>
-            {loading ? (
+            {loading || identityLoading ? (
               <TableSkeleton rows={6} columns={4} />
             ) : error
               ? <p className="px-4 py-10 text-center text-sm text-slate-500">
@@ -43,7 +65,9 @@ export default function ExamsPage() {
                 </p>
               : exams.length === 0
                 ? <p className="px-4 py-10 text-center text-sm text-slate-500">
-                    No exams created yet.
+                    {isStudent
+                      ? "No published results yet."
+                      : "No exams created yet."}
                   </p>
                 : (
                     <>
@@ -92,12 +116,8 @@ export default function ExamsPage() {
                                     {subject}
                                   </Badge>
                                 </TD>
-                                <TD>
-                                  {className}
-                                </TD>
-                                <TD>
-                                  {exam.term ?? "—"}
-                                </TD>
+                                <TD>{className}</TD>
+                                <TD>{exam.term ?? "—"}</TD>
                                 <TD>
                                   {exam.maxMarks !== undefined ? (
                                     <span className="font-medium text-slate-900">
@@ -113,12 +133,21 @@ export default function ExamsPage() {
                                   </Badge>
                                 </TD>
                                 <TD>
-                                  <a
-                                    href={`/${schoolSlug}/exams/${exam.id}/results`}
-                                    className="text-sm font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700"
-                                  >
-                                    View Results
-                                  </a>
+                                  {isStudent ? (
+                                    <a
+                                      href={`/${schoolSlug}/students/${student?.id}/report-card?term=${encodeURIComponent(exam.term ?? "")}`}
+                                      className="text-sm font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700"
+                                    >
+                                      View Results
+                                    </a>
+                                  ) : (
+                                    <a
+                                      href={`/${schoolSlug}/exams/${exam.id}/results`}
+                                      className="text-sm font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700"
+                                    >
+                                      View Results
+                                    </a>
+                                  )}
                                 </TD>
                               </TR>
                             );

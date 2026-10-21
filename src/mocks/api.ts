@@ -601,7 +601,21 @@ function schoolHandlers(slug: string) {
       const student = STUDENT_BY_ID.get(params.id as string);
       if (!student) return notFound("That student");
 
-      const term = new URL(request.url).searchParams.get("term") ?? "Term 1";
+      const url = new URL(request.url);
+      const term = url.searchParams.get("term") ?? "Term 1";
+      const email = url.searchParams.get("email") ?? undefined;
+
+      // A student may only view their own report card. Staff may view any
+      // student's card. The signed-in account is identified by ?email= so the
+      // id in the URL can never be used to reach another student's record.
+      if (email) {
+        const account = ACCOUNTS[email];
+        const accountStudentId = account?.person.studentId;
+        if (accountStudentId && accountStudentId !== params.id) {
+          return notFound("That student");
+        }
+      }
+
       return HttpResponse.json(buildReportCard(slug, student, term));
     }),
 
@@ -795,8 +809,10 @@ function schoolHandlers(slug: string) {
       const status = filterParam(url, "status");
       const classId = filterParam(url, "classId");
       const search = filterParam(url, "search") ?? "";
+      const mine = url.searchParams.get("mine") === "true";
+      const email = url.searchParams.get("email") ?? undefined;
 
-      const rows = (EXAMS[slug] ?? [])
+      let rows = (EXAMS[slug] ?? [])
         .filter(
           (exam: Exam) =>
             (!term || exam.term === term) &&
@@ -813,6 +829,21 @@ function schoolHandlers(slug: string) {
           matches(exam, search, ["name", "subjectName", "term"]),
         )
         .sort((a, b) => b.date.localeCompare(a.date));
+
+      // A student signing in with ?mine=true sees only their own published
+      // exams for their class. Staff see everything.
+      if (mine && email) {
+        const account = ACCOUNTS[email];
+        const studentId = account?.person.studentId;
+        const student = studentId ? STUDENT_BY_ID.get(studentId) : null;
+        if (student) {
+          rows = rows.filter(
+            (exam) => exam.status === "PUBLISHED" && exam.classId === student.classId,
+          );
+        } else {
+          rows = [];
+        }
+      }
 
       return HttpResponse.json(pageOf(rows, url));
     }),
