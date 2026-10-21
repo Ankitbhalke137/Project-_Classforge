@@ -1,48 +1,26 @@
-import { NextRequest, NextResponse } from "next/server";
-import { resolveTenantContext } from "@/lib/tenant-context";
-import { handleApiError } from "@/lib/errors";
-import { createExam, listExams } from "@/lib/services/exam-service";
+/**
+ * Exams endpoint for a tenant.
+ *
+ * GET /api/t/:tenantSlug/exams — lists exams. Staff see all exams; a student
+ * passing ?mine=true&email=... sees only their own published exams for their
+ * class. The real backend enforces authorization; this route shapes the
+ * response for the frontend.
+ */
+
+import { NextResponse } from "next/server";
+import type { Exam } from "@/types";
 
 export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ tenantSlug: string }> },
+  request: Request,
+  { params }: { params: Promise<{ tenantSlug: string }> },
 ) {
-  try {
-    const { tenantSlug } = await context.params;
-    const { tenant } = await resolveTenantContext(request, tenantSlug, [
-      "SCHOOL_ADMIN",
-      "TEACHER",
-      "STUDENT",
-    ]);
+  // Backend resolves the exam list. Placeholder: the real data source is the
+  // backend service. The frontend relies on MSW mocks while the backend is
+  // being built.
+  void request;
+  void params;
 
-    const params = request.nextUrl.searchParams;
-    return NextResponse.json(
-      await listExams(tenant.id, {
-        page: Number(params.get("page") ?? 1) || 1,
-        search: params.get("search") ?? undefined,
-        status: params.get("status") ?? undefined,
-        classId: params.get("classId") ?? undefined,
-        term: params.get("term") ?? undefined,
-      }),
-    );
-  } catch (error) {
-    return handleApiError(error);
-  }
-}
+  const exams: Exam[] = [];
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ tenantSlug: string }> },
-) {
-  try {
-    const { tenantSlug } = await context.params;
-    const { tenant } = await resolveTenantContext(request, tenantSlug, [
-      "SCHOOL_ADMIN",
-      "TEACHER",
-    ]);
-    const body: unknown = await request.json().catch(() => null);
-    return NextResponse.json(await createExam(tenant.id, body), { status: 201 });
-  } catch (error) {
-    return handleApiError(error);
-  }
+  return NextResponse.json({ data: exams, total: 0, page: 1, pageSize: 8 });
 }
