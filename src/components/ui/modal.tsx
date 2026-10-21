@@ -28,12 +28,20 @@ export function Modal({
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Callers almost always pass an inline `() => setOpen(false)`, so `onClose`
+  // gets a new identity on every render. Reading it through a ref keeps the
+  // effect below tied to `open` alone — otherwise each keystroke in a form
+  // inside the modal would re-run it and pull focus off the field onto the
+  // panel, so only the first character ever landed.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   // Escape closes, and the page behind must not scroll.
   useEffect(() => {
     if (!open) return;
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current();
     }
 
     document.addEventListener("keydown", onKeyDown);
@@ -44,7 +52,7 @@ export function Modal({
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -23,13 +23,22 @@ import {
 } from "@/components/ui/icons";
 import { FullPageLoader } from "@/components/ui/states";
 import { schoolApi } from "@/lib/api";
-import { useApi, useMembership, useRole } from "@/lib/hooks";
+import { useApi, useMembership, useRole, useSchoolCalendar } from "@/lib/hooks";
 import { canPerform } from "@/lib/roles";
-import { schoolHref } from "@/lib/nav";
-import { ACADEMIC_YEAR, currentTerm, periodTime } from "@/lib/schedule";
+import { schoolHref, schoolHrefForArea } from "@/lib/nav";
+import { currentTerm, type TermWindow } from "@/lib/schedule";
 import { useAuth } from "@/store/auth";
-import { ANNOUNCEMENT_PRIORITIES, type SchoolDashboard } from "@/types";
+import { ANNOUNCEMENT_PRIORITIES, type SchoolCalendar, type SchoolDashboard } from "@/types";
 import { cn } from "@/lib/utils";
+
+/** The API returns terms as startDate/endDate; the calendar helpers want startsOn/endsOn. */
+function calendarTerms(calendar: SchoolCalendar | null): TermWindow[] {
+  return (calendar?.terms ?? []).map((term) => ({
+    label: term.label,
+    startsOn: term.startDate,
+    endsOn: term.endDate,
+  }));
+}
 
 /**
  * The school-wide roll-up.
@@ -51,6 +60,7 @@ export function SchoolOverview() {
   const daySheet = useApi(() => schoolApi.getDaySheet(schoolSlug, { date: todayIso() }), [
     schoolSlug,
   ]);
+  const { calendar } = useSchoolCalendar();
 
   if (dashboard.loading || !dashboard.data) {
     return <FullPageLoader label="Loading your school's overview" />;
@@ -68,7 +78,7 @@ export function SchoolOverview() {
 
   return (
     <div className="space-y-6 lg:space-y-7">
-      <Greeting schoolName={membership?.schoolName ?? ""} />
+      <Greeting schoolName={membership?.schoolName ?? ""} calendar={calendar} />
 
       <KpiRow data={data} trend={trend.data ?? []} />
 
@@ -91,11 +101,16 @@ export function SchoolOverview() {
           <AcademicYearCard
             classCount={data.classCount}
             registersSubmitted={daySheet.data?.length ?? 0}
+            calendar={calendar}
           />
         </div>
 
         <div className="flex flex-col gap-6 lg:col-span-5 lg:gap-7">
-          <UpcomingExams schoolSlug={schoolSlug} exams={data.upcomingExams} />
+          <UpcomingExams
+            schoolSlug={schoolSlug}
+            exams={data.upcomingExams}
+            periods={calendar?.periods ?? []}
+          />
           <RecentActivity data={data} />
           <MissionQuote />
         </div>
@@ -108,9 +123,15 @@ export function SchoolOverview() {
  * Hero
  * ------------------------------------------------------------------ */
 
-function Greeting({ schoolName }: { schoolName: string }) {
+function Greeting({
+  schoolName,
+  calendar,
+}: {
+  schoolName: string;
+  calendar: SchoolCalendar | null;
+}) {
   const user = useAuth((state) => state.user);
-  const term = currentTerm(new Date());
+  const term = currentTerm(new Date(), calendarTerms(calendar));
 
   const firstName = user?.name.split(" ")[0] ?? "there";
   const hour = new Date().getHours();
@@ -140,7 +161,9 @@ function Greeting({ schoolName }: { schoolName: string }) {
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-mid px-3 py-1 text-xs font-medium text-body">
               <CalendarIcon width={14} height={14} className="text-secondary" />
-              {dateLabel} · AY {ACADEMIC_YEAR.label} · {term.label}
+              {dateLabel}
+              {calendar?.academicYear ? ` · AY ${calendar.academicYear.name}` : ""}
+              {term ? ` · ${term.label}` : ""}
             </span>
           </div>
 
@@ -473,7 +496,7 @@ function QuickActions({
     },
     {
       label: "Generate report",
-      href: schoolHref(schoolSlug, "report-cards"),
+      href: schoolHrefForArea(schoolSlug, "report-cards"),
       icon: <ReportsIcon width={20} height={20} />,
       tint: "bg-warn-50 text-warn-600",
       arrow: "text-warn-600",
@@ -617,11 +640,13 @@ function RecentAnnouncements({
 function AcademicYearCard({
   classCount,
   registersSubmitted,
+  calendar,
 }: {
   classCount: number;
   registersSubmitted: number;
+  calendar: SchoolCalendar | null;
 }) {
-  const term = currentTerm(new Date());
+  const term = currentTerm(new Date(), calendarTerms(calendar));
   const complete = classCount > 0 && registersSubmitted >= classCount;
 
   return (
@@ -630,16 +655,20 @@ function AcademicYearCard({
         <div className="flex items-center gap-2">
           <GraduationIcon width={22} height={22} className="text-secondary" />
           <h3 className="text-[17px] font-bold tracking-tight text-primary">
-            Academic year {ACADEMIC_YEAR.label}
+            {calendar?.academicYear
+              ? `Academic year ${calendar.academicYear.name}`
+              : "Academic year"}
           </h3>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-secondary-strong">
-          <VerifiedIcon width={14} height={14} />
-          {term.label} is {term.underway ? "underway" : "upcoming"}
-        </span>
+        {term ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-secondary-strong">
+            <VerifiedIcon width={14} height={14} />
+            {term.label} is {term.underway ? "underway" : "upcoming"}
+          </span>
+        ) : null}
       </div>
 
-      <p className="text-[13px] text-muted">Period: {term.range}</p>
+      {term ? <p className="text-[13px] text-muted">Period: {term.range}</p> : null}
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-[11px] font-semibold">
@@ -676,9 +705,11 @@ function AcademicYearCard({
 function UpcomingExams({
   schoolSlug,
   exams,
+  periods,
 }: {
   schoolSlug: string;
   exams: SchoolDashboard["upcomingExams"];
+  periods: SchoolCalendar["periods"];
 }) {
   return (
     <Card className="flex flex-col">
@@ -695,7 +726,7 @@ function UpcomingExams({
       ) : (
         <div className="flex flex-col gap-3 p-5">
           {exams.slice(0, 4).map((exam, index) => {
-            const time = periodTime(index + 1);
+            const time = periods[index];
             return (
               <div
                 key={exam.id}
@@ -715,7 +746,7 @@ function UpcomingExams({
                         month: "short",
                         year: "numeric",
                       }).format(new Date(exam.date))}
-                      {time ? ` · ${time.start}` : ""}
+                      {time ? ` · ${time.startTime}` : ""}
                     </p>
                     <p className="truncate text-sm font-bold text-primary">{exam.name}</p>
                   </div>
@@ -928,4 +959,3 @@ function formatMoney(amount: number): string {
     maximumFractionDigits: 0,
   }).format(amount);
 }
-

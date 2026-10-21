@@ -1,4 +1,6 @@
 import type {
+  AcademicTerm,
+  AcademicYear,
   Announcement,
   AnnouncementPriority,
   AssignmentDetail,
@@ -10,36 +12,43 @@ import type {
   AttendanceTrendPoint,
   Exam,
   ExamResult,
+  ExamStatus,
   FeeInvoice,
   FeeSummary,
   Paginated,
   Parent,
+  PlatformAdmin,
   PlatformStats,
+  CreatedPlatformAdmin,
   ReportCard,
   School,
+  SchoolCalendar,
   SchoolClass,
   SchoolDashboard,
   SchoolIdentity,
+  StaffRole,
   Student,
   StudentAttendance,
   Subject,
   SubmissionStatus,
   Teacher,
+  TeachingAssignment,
+  TimetablePeriod,
   TimetableSlot,
   User,
   Membership,
+  NotificationPreferences,
 } from "@/types";
 
 /* ------------------------------------------------------------------ *
- * Mock switch
+ * Base URL
  *
- * Mocks stand in for the backend until it is live. Requests then stay on
- * the current origin so the mock service worker can intercept them.
+ * The API routes live inside this Next app, so requests go to this origin by
+ * default. Set NEXT_PUBLIC_API_BASE_URL only if the API is ever split onto its
+ * own host.
  * ------------------------------------------------------------------ */
 
-export const MOCKS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCKS !== "false";
-
-const BASE_URL = MOCKS_ENABLED ? "" : (process.env.NEXT_PUBLIC_API_BASE_URL ?? "");
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 /* ------------------------------------------------------------------ *
  * The one fetch helper
@@ -96,10 +105,30 @@ export async function api<T>(
  * ------------------------------------------------------------------ */
 
 export const authApi = {
+  /**
+   * The backend hands the access token back as an httpOnly cookie, not in the
+   * body — so there is no `token` field here to read.
+   */
   login: (email: string, password: string) =>
-    api<{ token: string; user: User; schools: Membership[] }>("/api/auth/login", {
+    api<{ user: User; schools: Membership[] }>("/api/auth/login", {
       method: "POST",
       body: { email, password },
+    }),
+
+  /**
+   * Changes the signed-in account's own password.
+   *
+   * The server asks for the current password, so this cannot be used to take
+   * over an account from a session alone.
+   */
+  changePassword: (body: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }) =>
+    api<{ message: string }>("/api/auth/change-password", {
+      method: "POST",
+      body,
     }),
 };
 
@@ -108,9 +137,45 @@ export const platformApi = {
   listSchools: () => api<School[]>("/api/platform/schools"),
   createSchool: (name: string, slug: string) =>
     api<School>("/api/platform/schools", { method: "POST", body: { name, slug } }),
-  setSchoolStatus: (schoolSlug: string, status: School["status"]) =>
-    api<School>(`/api/platform/schools/${schoolSlug}`, { method: "PATCH", body: { status } }),
+  updateSchool: (
+    schoolId: string,
+    body: { name?: string; slug?: string; status?: School["status"] },
+  ) => api<School>(`/api/platform/schools/${schoolId}`, { method: "PATCH", body }),
+  removeSchool: (schoolId: string, force = false) =>
+    api<{ removed: boolean; id: string }>(
+      `/api/platform/schools/${schoolId}${force ? "?force=true" : ""}`,
+      { method: "DELETE" },
+    ),
   stats: () => api<PlatformStats>("/api/platform/stats"),
+
+  /* Staff access — who administers each school. */
+  listAdmins: () => api<PlatformAdmin[]>("/api/platform/admins"),
+  createAdmin: (body: {
+    name: string;
+    email: string;
+    schoolId: string;
+    role: StaffRole;
+  }) => api<CreatedPlatformAdmin>("/api/platform/admins", { method: "POST", body }),
+  updateAdmin: (
+    userId: string,
+    body: { tenantId: string; role?: StaffRole; status?: "ACTIVE" | "INACTIVE" },
+  ) => api<PlatformAdmin>(`/api/platform/admins/${userId}`, { method: "PATCH", body }),
+  removeAdmin: (userId: string, tenantId: string) =>
+    api<{ removed: boolean }>(
+      `/api/platform/admins/${userId}?tenantId=${encodeURIComponent(tenantId)}`,
+      { method: "DELETE" },
+    ),
+  /** Issues a fresh temporary password for an existing member and emails it. */
+  resendAdminCredentials: (userId: string, tenantId: string) =>
+    api<{
+      userId: string;
+      tenantId: string;
+      name: string;
+      email: string;
+      schoolName: string;
+      emailSent: boolean;
+      emailError: string | null;
+    }>(`/api/platform/admins/${userId}/resend`, { method: "POST", body: { tenantId } }),
 };
 
 export type ListParams = Record<string, string | number | undefined>;
@@ -118,28 +183,301 @@ export type ListParams = Record<string, string | number | undefined>;
 /** Every school endpoint carries the school slug, so the backend knows whose data it is. */
 export const schoolApi = {
   /* --- People --- */
-  listStudents: (schoolSlug: string, params: { page?: number; search?: string; classId?: string; status?: string } = {}) =>
-    api<Paginated<Student>>(withQuery(`/api/t/${schoolSlug}/students`, params)),
+  listStudents: (
+    schoolSlug: string,
+    params: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      classId?: string;
+      sectionId?: string;
+      status?: string;
+      sort?: string;
+    } = {},
+  ) => api<Paginated<Student>>(withQuery(`/api/t/${schoolSlug}/students`, params)),
+
   getStudent: (schoolSlug: string, studentId: string) =>
     api<Student>(`/api/t/${schoolSlug}/students/${studentId}`),
-  getStudentAttendance: (schoolSlug: string, studentId: string, params: { days?: number } = {}) =>
-    api<StudentAttendance>(withQuery(`/api/t/${schoolSlug}/students/${studentId}/attendance`, params)),
-  getReportCard: (schoolSlug: string, studentId: string, params: { term: string; email?: string }) =>
-    api<ReportCard>(withQuery(`/api/t/${schoolSlug}/students/${studentId}/report-card`, params)),
+
+  createStudent: (
+    schoolSlug: string,
+    body: {
+      firstName: string;
+      lastName: string;
+      admissionNo: string;
+      dateOfBirth?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      guardianName?: string | null;
+      guardianPhone?: string | null;
+      sectionId?: string | null;
+      academicYearId?: string | null;
+    },
+  ) =>
+    api<
+      Student & {
+        temporaryPassword: string | null;
+        emailSent: boolean;
+        emailError: string | null;
+      }
+    >(`/api/t/${schoolSlug}/students`, {
+      method: "POST",
+      body,
+    }),
+
+  updateStudent: (
+    schoolSlug: string,
+    id: string,
+    body: {
+      firstName?: string;
+      lastName?: string;
+      admissionNo?: string;
+      dateOfBirth?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      guardianName?: string | null;
+      guardianPhone?: string | null;
+      sectionId?: string | null;
+      academicYearId?: string | null;
+      status?: "ACTIVE" | "INACTIVE" | "WITHDRAWN" | "COMPLETED" | "TRANSFERRED";
+    },
+  ) =>
+    api<Student>(`/api/t/${schoolSlug}/students/${id}`, {
+      method: "PATCH",
+      body,
+    }),
+
+  deleteStudent: (schoolSlug: string, id: string, permanent?: boolean) =>
+    api<{ message: string; deleted?: boolean; status?: string }>(
+      withQuery(`/api/t/${schoolSlug}/students/${id}`, {
+        permanent: permanent ? "true" : undefined,
+      }),
+      { method: "DELETE" },
+    ),
+
+  getStudentAttendance: (
+    schoolSlug: string,
+    studentId: string,
+    params: { days?: number } = {},
+  ) =>
+    api<StudentAttendance>(
+      withQuery(`/api/t/${schoolSlug}/students/${studentId}/attendance`, params),
+    ),
+
+  getReportCard: (schoolSlug: string, studentId: string, params: { term: string }) =>
+    api<ReportCard>(
+      withQuery(`/api/t/${schoolSlug}/students/${studentId}/report-card`, params),
+    ),
+
+  listClassesWithSections: (schoolSlug: string) =>
+    api<{
+      data: Array<{
+        id: string;
+        name: string;
+        academicYear: { id: string; name: string; status: string };
+        sections: Array<{ id: string; name: string }>;
+      }>;
+    }>(`/api/t/${schoolSlug}/classes`),
+
   listTeachers: (schoolSlug: string) =>
     api<Teacher[]>(`/api/t/${schoolSlug}/teachers`),
+
+  /** Creates the staff profile, the login and the membership in one call. */
+  createTeacher: (
+    schoolSlug: string,
+    body: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      employeeNo?: string | null;
+      phone?: string | null;
+      qualification?: string | null;
+      designation?: string | null;
+    },
+  ) =>
+    api<{
+      teacher: Teacher;
+      temporaryPassword: string | null;
+      emailSent: boolean;
+      emailError: string | null;
+      existingAccount: boolean;
+    }>(`/api/t/${schoolSlug}/teachers`, { method: "POST", body }),
+
+  updateTeacher: (
+    schoolSlug: string,
+    id: string,
+    body: {
+      firstName?: string;
+      lastName?: string;
+      employeeNo?: string | null;
+      phone?: string | null;
+      qualification?: string | null;
+      designation?: string | null;
+      status?: "ACTIVE" | "INACTIVE";
+    },
+  ) => api<Teacher>(`/api/t/${schoolSlug}/teachers/${id}`, { method: "PATCH", body }),
+
+  deactivateTeacher: (schoolSlug: string, id: string) =>
+    api<{ deactivated: boolean; status: string }>(
+      `/api/t/${schoolSlug}/teachers/${id}`,
+      { method: "DELETE" },
+    ),
+
   listParents: (schoolSlug: string, params: ListParams = {}) =>
     api<Paginated<Parent>>(withQuery(`/api/t/${schoolSlug}/parents`, params)),
   listParentChildren: (schoolSlug: string, parentId: string) =>
     api<Student[]>(`/api/t/${schoolSlug}/parents/${parentId}/children`),
 
   /* --- Academic structure --- */
-  listSubjects: (schoolSlug: string) =>
-    api<Subject[]>(`/api/t/${schoolSlug}/subjects`),
+  listAcademicYears: (schoolSlug: string) =>
+    api<AcademicYear[]>(`/api/t/${schoolSlug}/academic-years`),
+  createAcademicYear: (
+    schoolSlug: string,
+    body: { name: string; startDate: string; endDate: string; status?: AcademicYear["status"] },
+  ) => api<AcademicYear>(`/api/t/${schoolSlug}/academic-years`, { method: "POST", body }),
+  updateAcademicYear: (
+    schoolSlug: string,
+    id: string,
+    body: {
+      name?: string;
+      startDate?: string;
+      endDate?: string;
+      status?: AcademicYear["status"];
+    },
+  ) => api<AcademicYear>(`/api/t/${schoolSlug}/academic-years/${id}`, { method: "PATCH", body }),
+  deleteAcademicYear: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/academic-years/${id}`, { method: "DELETE" }),
+
+  listTerms: (schoolSlug: string, academicYearId?: string) =>
+    api<AcademicTerm[]>(
+      withQuery(`/api/t/${schoolSlug}/terms`, { academicYearId }),
+    ),
+  createTerm: (
+    schoolSlug: string,
+    body: { academicYearId: string; label: string; startDate: string; endDate: string },
+  ) => api<AcademicTerm>(`/api/t/${schoolSlug}/terms`, { method: "POST", body }),
+  updateTerm: (
+    schoolSlug: string,
+    id: string,
+    body: { label?: string; startDate?: string; endDate?: string; position?: number },
+  ) => api<AcademicTerm>(`/api/t/${schoolSlug}/terms/${id}`, { method: "PATCH", body }),
+  deleteTerm: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/terms/${id}`, { method: "DELETE" }),
+
+  listSubjects: (schoolSlug: string, params: { classId?: string } = {}) =>
+    api<Subject[]>(withQuery(`/api/t/${schoolSlug}/subjects`, params)),
+  createSubject: (
+    schoolSlug: string,
+    body: { classId: string; name: string; code?: string | null },
+  ) => api<Subject>(`/api/t/${schoolSlug}/subjects`, { method: "POST", body }),
+  updateSubject: (
+    schoolSlug: string,
+    id: string,
+    body: { name?: string; code?: string | null },
+  ) => api<Subject>(`/api/t/${schoolSlug}/subjects/${id}`, { method: "PATCH", body }),
+  deleteSubject: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/subjects/${id}`, { method: "DELETE" }),
+
   listClasses: (schoolSlug: string, params: { grade?: string; search?: string } = {}) =>
     api<SchoolClass[]>(withQuery(`/api/t/${schoolSlug}/classes`, params)),
+  createClass: (
+    schoolSlug: string,
+    body: {
+      name: string;
+      academicYearId?: string;
+      room?: string | null;
+      capacity?: number;
+      homeroomTeacherId?: string | null;
+      sections?: string[];
+    },
+  ) =>
+    api<{ id: string; name: string; sections: string[] }>(`/api/t/${schoolSlug}/classes`, {
+      method: "POST",
+      body,
+    }),
+  updateClass: (
+    schoolSlug: string,
+    id: string,
+    body: {
+      name?: string;
+      room?: string | null;
+      capacity?: number;
+      homeroomTeacherId?: string | null;
+    },
+  ) => api<{ id: string }>(`/api/t/${schoolSlug}/classes/${id}`, { method: "PATCH", body }),
+  deleteClass: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/classes/${id}`, { method: "DELETE" }),
+
+  addSection: (schoolSlug: string, classId: string, name: string) =>
+    api<{ id: string; name: string }>(`/api/t/${schoolSlug}/classes/${classId}/sections`, {
+      method: "POST",
+      body: { name },
+    }),
+  updateSection: (schoolSlug: string, sectionId: string, name: string) =>
+    api<{ id: string; name: string }>(`/api/t/${schoolSlug}/sections/${sectionId}`, {
+      method: "PATCH",
+      body: { name },
+    }),
+  deleteSection: (schoolSlug: string, sectionId: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/sections/${sectionId}`, {
+      method: "DELETE",
+    }),
+
+  listTeachingAssignments: (
+    schoolSlug: string,
+    params: { sectionId?: string; teacherId?: string } = {},
+  ) =>
+    api<TeachingAssignment[]>(
+      withQuery(`/api/t/${schoolSlug}/teaching-assignments`, params),
+    ),
+  createTeachingAssignment: (
+    schoolSlug: string,
+    body: { teacherId: string; sectionId: string; subjectId: string },
+  ) =>
+    api<{ id: string }>(`/api/t/${schoolSlug}/teaching-assignments`, {
+      method: "POST",
+      body,
+    }),
+  deleteTeachingAssignment: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/teaching-assignments/${id}`, {
+      method: "DELETE",
+    }),
+
+  listTimetablePeriods: (schoolSlug: string) =>
+    api<TimetablePeriod[]>(`/api/t/${schoolSlug}/timetable-periods`),
+  createTimetablePeriod: (
+    schoolSlug: string,
+    body: { period: number; startTime: string; endTime: string; label?: string | null },
+  ) =>
+    api<TimetablePeriod>(`/api/t/${schoolSlug}/timetable-periods`, {
+      method: "POST",
+      body,
+    }),
+  updateTimetablePeriod: (
+    schoolSlug: string,
+    id: string,
+    body: { period?: number; startTime?: string; endTime?: string; label?: string | null },
+  ) =>
+    api<TimetablePeriod>(`/api/t/${schoolSlug}/timetable-periods/${id}`, {
+      method: "PATCH",
+      body,
+    }),
+  deleteTimetablePeriod: (schoolSlug: string, id: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/timetable-periods/${id}`, {
+      method: "DELETE",
+    }),
+
   getClassTimetable: (schoolSlug: string, classId: string) =>
     api<TimetableSlot[]>(`/api/t/${schoolSlug}/classes/${classId}/timetable`),
+  saveClassTimetable: (
+    schoolSlug: string,
+    classId: string,
+    slots: { day: string; period: number; subjectId: string; teacherId: string }[],
+  ) =>
+    api<TimetableSlot[]>(`/api/t/${schoolSlug}/classes/${classId}/timetable`, {
+      method: "PUT",
+      body: { slots },
+    }),
 
   /* --- Attendance --- */
   /** The register for one class on one day, for marking. */
@@ -169,10 +507,49 @@ export const schoolApi = {
     schoolSlug: string,
     params: { page?: number; search?: string; term?: string; status?: string; classId?: string } = {},
   ) => api<Paginated<Exam>>(withQuery(`/api/t/${schoolSlug}/exams`, params)),
+  createExam: (
+    schoolSlug: string,
+    body: {
+      name: string;
+      term?: string | null;
+      subjectId: string;
+      sectionId: string;
+      examDate: string;
+      maxMarks: number;
+      passMarks?: number;
+      status?: ExamStatus;
+    },
+  ) => api<Exam>(`/api/t/${schoolSlug}/exams`, { method: "POST", body }),
+  updateExam: (
+    schoolSlug: string,
+    examId: string,
+    body: {
+      name?: string;
+      term?: string | null;
+      examDate?: string;
+      maxMarks?: number;
+      passMarks?: number;
+      status?: ExamStatus;
+    },
+  ) => api<Exam>(`/api/t/${schoolSlug}/exams/${examId}`, { method: "PATCH", body }),
+  deleteExam: (schoolSlug: string, examId: string) =>
+    api<{ removed: boolean }>(`/api/t/${schoolSlug}/exams/${examId}`, { method: "DELETE" }),
   getExamResults: (schoolSlug: string, examId: string) =>
     api<{ exam: Exam; results: ExamResult[] }>(`/api/t/${schoolSlug}/exams/${examId}/results`),
+  saveExamMarks: (
+    schoolSlug: string,
+    examId: string,
+    records: { studentId: string; score: number | null; remarks?: string | null }[],
+  ) =>
+    api<{ exam: Exam; results: ExamResult[] }>(
+      `/api/t/${schoolSlug}/exams/${examId}/results`,
+      { method: "PUT", body: { records } },
+    ),
   publishExam: (schoolSlug: string, examId: string) =>
-    api<Exam>(`/api/t/${schoolSlug}/exams/${examId}/publish`, { method: "POST" }),
+    api<{ exam: Exam; results: ExamResult[] }>(
+      `/api/t/${schoolSlug}/exams/${examId}/publish`,
+      { method: "POST" },
+    ),
   /** Whole-class report cards for a published term. */
   listReportCards: (schoolSlug: string, params: { classId: string; term: string }) =>
     api<ReportCard[]>(withQuery(`/api/t/${schoolSlug}/report-cards`, params)),
@@ -241,6 +618,40 @@ export const schoolApi = {
     schoolSlug: string,
     body: Pick<Announcement, "title" | "body" | "audience" | "priority"> & { pinned?: boolean },
   ) => api<Announcement>(`/api/t/${schoolSlug}/announcements`, { method: "POST", body }),
+
+  /* --- Invites --- */
+  /** Adds a person to this school and emails them a temporary password. */
+  invite: (
+    schoolSlug: string,
+    body: { name: string; email: string; role: "TEACHER" | "STUDENT" },
+  ) =>
+    api<{
+      userId: string;
+      name: string;
+      email: string;
+      role: string;
+      schoolName: string;
+      temporaryPassword: string | null;
+      emailSent: boolean;
+      /** Why the email did not go out. Null when it did, or when there was none to send. */
+      emailError?: string | null;
+    }>(`/api/t/${schoolSlug}/invite`, { method: "POST", body }),
+
+  /* --- Calendar --- */
+  /** This school's academic year, terms and timetable. */
+  getCalendar: (schoolSlug: string) => api<SchoolCalendar>(`/api/t/${schoolSlug}/calendar`),
+
+  /* --- Notification preferences --- */
+  getNotificationPreferences: (schoolSlug: string) =>
+    api<NotificationPreferences>(`/api/t/${schoolSlug}/notification-preferences`),
+  saveNotificationPreferences: (
+    schoolSlug: string,
+    body: NotificationPreferences,
+  ) =>
+    api<NotificationPreferences>(`/api/t/${schoolSlug}/notification-preferences`, {
+      method: "PUT",
+      body,
+    }),
 
   /* --- Fees --- */
   /**

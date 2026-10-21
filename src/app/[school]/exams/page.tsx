@@ -10,7 +10,6 @@ import { useApi, useIdentity, useMembership, useRole } from "@/lib/hooks";
 import { useAuth } from "@/store/auth";
 import { examService } from "@/lib/services/exam-service";
 import type { Exam } from "@/types";
-import { SUBJECT_BY_ID, CLASS_BY_ID } from "@/mocks/fixtures";
 
 export default function ExamsPage() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
@@ -85,18 +84,9 @@ export default function ExamsPage() {
                         </THead>
                         <TBody>
                           {exams.map((exam) => {
-                            const subject =
-                              exam.subjectId && SUBJECT_BY_ID?.get(exam.subjectId)
-                                ? SUBJECT_BY_ID.get(exam.subjectId)?.name
-                                : exam.subjectId
-                                  ? `Subject ${exam.subjectId}`
-                                  : "—";
-                            const className =
-                              exam.classId && CLASS_BY_ID?.get(exam.classId)
-                                ? CLASS_BY_ID.get(exam.classId)?.name
-                                : exam.classId
-                                  ? `Class ${exam.classId}`
-                                  : "—";
+                            // The API already composes "Subject — Exam" into
+                            // `name`, so there is nothing to look up.
+                            const className = exam.classId || "—";
                             const statusTone =
                               exam.status === "SCHEDULED"
                                 ? "neutral"
@@ -113,7 +103,7 @@ export default function ExamsPage() {
                                 </TD>
                                 <TD>
                                   <Badge tone="brand" className="text-xs">
-                                    {subject}
+                                    {exam.subjectId || "—"}
                                   </Badge>
                                 </TD>
                                 <TD>{className}</TD>

@@ -12,10 +12,9 @@ import { useAuth } from "@/store/auth";
 /**
  * Protected routes.
  *
- * These run on the client because while the mock API is on, the session lives
- * in sessionStorage rather than a cookie. Once the real backend sets an
- * HTTP-only cookie, `proxy.ts` can do this redirect before any page renders.
- * Either way the backend re-checks every request — these only hide UI.
+ * These run on the client as well as on the server, so a hidden screen does not
+ * flash before the redirect. Either way the backend re-checks every request —
+ * these only hide UI.
  */
 
 /** Anyone signed in may open this. */

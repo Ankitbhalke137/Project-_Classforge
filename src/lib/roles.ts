@@ -7,8 +7,8 @@ import type { Role } from "@/types";
  *
  * - `SCHOOL_AREAS` — the screens in the sidebar. Drives `navForRole` and
  *   `RequireArea`, so a hidden tab is also a blocked URL.
- * - `ACTIONS` — the things a screen can do. Drives the buttons, and the mock API
- *   re-checks it on every write, the way the real backend will.
+ * - `ACTIONS` — the things a screen can do. Drives the buttons, and the backend
+ *   re-checks it on every write.
  *
  * Adding a role or a screen is one edit here, never an `if (role === ...)` in a
  * component. The backend remains the authority; this only keeps the UI honest.
