@@ -26,6 +26,45 @@ const updateSchoolSchema = z
   });
 
 /**
+ * GET /api/platform/schools/:schoolId
+ *
+ * Retrieves details of a single school for Super Admin.
+ */
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ schoolId: string }> },
+) {
+  try {
+    await requireSuperAdmin(request);
+
+    const { schoolId } = await context.params;
+    const school = await prisma.tenant.findUnique({
+      where: { id: schoolId },
+      include: {
+        _count: { select: { students: true, teachers: true, classes: true } },
+      },
+    });
+
+    if (!school) {
+      throw new NotFoundError("School not found.");
+    }
+
+    return NextResponse.json({
+      id: school.id,
+      name: school.name,
+      slug: school.slug,
+      status: school.status,
+      studentCount: school._count.students,
+      staffCount: school._count.teachers,
+      classCount: school._count.classes,
+      createdAt: school.createdAt.toISOString(),
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+/**
  * PATCH /api/platform/schools/:schoolId
  *
  * Renames a school, changes its URL slug, or suspends and reactivates it.
