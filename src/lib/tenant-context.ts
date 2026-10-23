@@ -36,12 +36,18 @@ export interface TenantContext {
 export async function withTenant<T>(
   tenantId: string,
   callback: (tx: Prisma.TransactionClient) => Promise<T>,
+  options: { timeout?: number } = {},
 ): Promise<T> {
-  return prisma.$transaction(async (tx) => {
-    // Sets session variable with parameter binding — behaves like SET LOCAL
-    await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-    return callback(tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      // Sets session variable with parameter binding — behaves like SET LOCAL
+      await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      return callback(tx);
+    },
+    // Writes on a cold serverless connection can take longer than the 5s
+    // default, and a slow transaction is rolled back with P2028.
+    { timeout: options.timeout ?? 5_000 },
+  );
 }
 
 /**

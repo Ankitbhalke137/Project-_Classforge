@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 
-const preferencesSchema = z.object({
+const savePreferencesSchema = z.object({
   inAppNotifications: z.boolean(),
   emailNotifications: z.boolean(),
   classAnnouncements: z.boolean(),
@@ -13,9 +13,8 @@ const preferencesSchema = z.object({
 /**
  * GET /api/t/:tenantSlug/notification-preferences
  *
- * The signed-in person's own notification choices for this school. A member
- * with no row yet gets the defaults, so the settings screen always shows
- * something real.
+ * The signed-in person's choices for this school. Someone who has never saved
+ * them gets the defaults; nothing is written until they actually choose.
  */
 export async function GET(
   request: NextRequest,
@@ -29,19 +28,11 @@ export async function GET(
       where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
     });
 
-    return NextResponse.json(
-      preferences
-        ? {
-            inAppNotifications: preferences.inAppNotifications,
-            emailNotifications: preferences.emailNotifications,
-            classAnnouncements: preferences.classAnnouncements,
-          }
-        : {
-            inAppNotifications: true,
-            emailNotifications: false,
-            classAnnouncements: true,
-          },
-    );
+    return NextResponse.json({
+      inAppNotifications: preferences?.inAppNotifications ?? true,
+      emailNotifications: preferences?.emailNotifications ?? false,
+      classAnnouncements: preferences?.classAnnouncements ?? true,
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -50,7 +41,8 @@ export async function GET(
 /**
  * PUT /api/t/:tenantSlug/notification-preferences
  *
- * Saves the signed-in person's notification choices.
+ * Stores all three switches together. Per school, not per account — the same
+ * person may want a different mix in each school they belong to.
  */
 export async function PUT(
   request: NextRequest,
@@ -61,25 +53,18 @@ export async function PUT(
     const { tenant, user } = await resolveTenantContext(request, tenantSlug);
 
     const body: unknown = await request.json().catch(() => null);
-    const { inAppNotifications, emailNotifications, classAnnouncements } =
-      preferencesSchema.parse(body);
+    const input = savePreferencesSchema.parse(body);
 
-    const preferences = await prisma.notificationPreference.upsert({
+    const saved = await prisma.notificationPreference.upsert({
       where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
-      create: {
-        tenantId: tenant.id,
-        userId: user.id,
-        inAppNotifications,
-        emailNotifications,
-        classAnnouncements,
-      },
-      update: { inAppNotifications, emailNotifications, classAnnouncements },
+      create: { tenantId: tenant.id, userId: user.id, ...input },
+      update: input,
     });
 
     return NextResponse.json({
-      inAppNotifications: preferences.inAppNotifications,
-      emailNotifications: preferences.emailNotifications,
-      classAnnouncements: preferences.classAnnouncements,
+      inAppNotifications: saved.inAppNotifications,
+      emailNotifications: saved.emailNotifications,
+      classAnnouncements: saved.classAnnouncements,
     });
   } catch (error) {
     return handleApiError(error);

@@ -48,7 +48,11 @@ export const ACTIONS = {
 
   /* People */
   inviteUsers: ["SCHOOL_ADMIN"],
+  /** Edit, deactivate and reactivate. Creating is a separate, wider power. */
   manageRoster: ["SCHOOL_ADMIN"],
+  /** Admins create anywhere; teachers create only in the classes they teach. */
+  createStudent: ["SCHOOL_ADMIN", "TEACHER"],
+  resendStudentCredentials: ["SCHOOL_ADMIN", "TEACHER"],
   /** A teacher reads the roster of the classes they teach, and no others. */
   viewRoster: ["SCHOOL_ADMIN", "TEACHER"],
   viewStaffDirectory: ["SCHOOL_ADMIN"],

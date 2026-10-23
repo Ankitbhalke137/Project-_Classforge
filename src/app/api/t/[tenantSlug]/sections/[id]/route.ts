@@ -1,135 +1,71 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
-import { handleApiError, NotFoundError, ConflictError } from "@/lib/errors";
+import { prisma } from "@/lib/prisma";
+import { resolveTenantContext } from "@/lib/tenant-context";
+import { handleApiError, NotFoundError } from "@/lib/errors";
+import { deleteSection, updateSection } from "@/lib/services/academic-service";
 
-type Context = {
-  params: Promise<{ tenantSlug: string; id: string }>;
-};
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const updateSectionSchema = z.object({
-  name: z.string().trim().min(1, "Section name is required.").max(50),
-});
-
-/**
- * GET /api/t/:tenantSlug/sections/:id
- * Fetches section details.
- */
-export async function GET(request: NextRequest, context: Context) {
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string; id: string }> },
+) {
   try {
     const { tenantSlug, id } = await context.params;
+    if (!UUID.test(id)) throw new NotFoundError("Section not found.");
     const { tenant } = await resolveTenantContext(request, tenantSlug, [
       "SCHOOL_ADMIN",
       "TEACHER",
-      "STUDENT",
     ]);
 
-    const section = await withTenant(tenant.id, async (tx) => {
-      return tx.section.findFirst({
-        where: { id, tenantId: tenant.id },
-        include: {
-          schoolClass: { select: { id: true, name: true } },
-          _count: { select: { enrolments: true, attendanceRecords: true, exams: true } },
-        },
-      });
+    const section = await prisma.section.findFirst({
+      where: { id, tenantId: tenant.id },
+      select: {
+        id: true,
+        classId: true,
+        name: true,
+        schoolClass: { select: { name: true } },
+        _count: { select: { enrolments: { where: { status: "ACTIVE" } } } },
+      },
     });
-
-    if (!section) {
-      throw new NotFoundError("Section not found.");
-    }
+    if (!section) throw new NotFoundError("Section not found.");
 
     return NextResponse.json({
       id: section.id,
-      name: section.name,
       classId: section.classId,
+      name: section.name,
       className: section.schoolClass.name,
-      enrolmentCount: section._count.enrolments,
-      createdAt: section.createdAt.toISOString(),
+      studentCount: section._count.enrolments,
     });
   } catch (error) {
     return handleApiError(error);
   }
 }
 
-/**
- * PATCH /api/t/:tenantSlug/sections/:id
- * Updates section name.
- * SCHOOL_ADMIN only.
- */
-export async function PATCH(request: NextRequest, context: Context) {
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string; id: string }> },
+) {
   try {
     const { tenantSlug, id } = await context.params;
+    if (!UUID.test(id)) throw new NotFoundError("Section not found.");
     const { tenant } = await resolveTenantContext(request, tenantSlug, ["SCHOOL_ADMIN"]);
-
-    const body = updateSectionSchema.parse(await request.json().catch(() => ({})));
-
-    const updated = await withTenant(tenant.id, async (tx) => {
-      const section = await tx.section.findFirst({
-        where: { id, tenantId: tenant.id },
-      });
-      if (!section) {
-        throw new NotFoundError("Section not found.");
-      }
-
-      if (body.name !== section.name) {
-        const conflict = await tx.section.findFirst({
-          where: { tenantId: tenant.id, classId: section.classId, name: body.name },
-        });
-        if (conflict) {
-          throw new ConflictError("A section with this name already exists in this class.", {
-            name: "Section name already taken in this class.",
-          });
-        }
-      }
-
-      return tx.section.update({
-        where: { id },
-        data: { name: body.name },
-      });
-    });
-
-    return NextResponse.json(updated);
+    const body: unknown = await request.json().catch(() => null);
+    return NextResponse.json(await updateSection(tenant.id, id, body));
   } catch (error) {
     return handleApiError(error);
   }
 }
 
-/**
- * DELETE /api/t/:tenantSlug/sections/:id
- * Deletes section if no enrolments, attendance records, or exams exist.
- * SCHOOL_ADMIN only.
- */
-export async function DELETE(request: NextRequest, context: Context) {
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string; id: string }> },
+) {
   try {
     const { tenantSlug, id } = await context.params;
+    if (!UUID.test(id)) throw new NotFoundError("Section not found.");
     const { tenant } = await resolveTenantContext(request, tenantSlug, ["SCHOOL_ADMIN"]);
-
-    await withTenant(tenant.id, async (tx) => {
-      const section = await tx.section.findFirst({
-        where: { id, tenantId: tenant.id },
-        include: {
-          _count: { select: { enrolments: true, attendanceRecords: true, exams: true } },
-        },
-      });
-
-      if (!section) {
-        throw new NotFoundError("Section not found.");
-      }
-
-      if (
-        section._count.enrolments > 0 ||
-        section._count.attendanceRecords > 0 ||
-        section._count.exams > 0
-      ) {
-        throw new ConflictError(
-          "Cannot delete section with existing enrolments, attendance, or exams.",
-        );
-      }
-
-      await tx.section.delete({ where: { id } });
-    });
-
-    return NextResponse.json({ message: "Section deleted successfully." });
+    return NextResponse.json(await deleteSection(tenant.id, id));
   } catch (error) {
     return handleApiError(error);
   }

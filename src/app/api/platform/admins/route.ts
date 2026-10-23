@@ -9,8 +9,7 @@ import {
   handleApiError,
 } from "@/lib/errors";
 import { requireSuperAdmin } from "@/lib/platform-auth";
-import { sendEmail } from "@/lib/email/service";
-import { staffInviteHtml, staffInviteText } from "@/lib/email/templates";
+import { sendCredentialsEmail, appUrl } from "@/lib/mail";
 
 /** The staff roles a Super Admin may hand out. Students are created from a roster. */
 const STAFF_ROLES = ["SCHOOL_ADMIN", "TEACHER"] as const;
@@ -19,6 +18,12 @@ const STAFF_ROLES = ["SCHOOL_ADMIN", "TEACHER"] as const;
 function generateTemporaryPassword(): string {
   return randomBytes(12).toString("base64url");
 }
+
+/** The role as a person would read it in an email, not the database enum. */
+const ROLE_LABEL: Record<string, string> = {
+  SCHOOL_ADMIN: "School Admin",
+  TEACHER: "Teacher",
+};
 
 /**
  * GET /api/platform/admins
@@ -73,10 +78,11 @@ const createAdminSchema = z.object({
  *
  * Gives one person staff access to one school.
  *
- * A new account is created with a generated password, and that password is
- * emailed to the person from superadminclassforge@gmail.com. The password is
- * also returned once in the response, so the Super Admin can pass it on if the
- * email does not arrive.
+ * The account is created with a generated password, which is emailed to them.
+ * The same password is returned once to the Super Admin as a backup — it is
+ * only ever stored as a bcrypt hash, so it cannot be looked up later. If the
+ * email cannot be sent the account still exists and the Super Admin shares the
+ * password by hand.
  *
  * An email that already has an account keeps its name and password; only the
  * membership is added. An account with no password yet (a student imported from
@@ -127,29 +133,21 @@ export async function POST(request: NextRequest) {
       data: { tenantId: school.id, userId: user.id, role },
     });
 
-    // Send the temporary password by email from superadminclassforge@gmail.com.
-    // A failed send must not undo the account, so the response still carries the
-    // password and the Super Admin can pass it on manually.
-    const loginUrl = `${process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}/login`;
+    // Only a brand new account has a password worth emailing. Someone who
+    // already had one keeps it, and re-sending it would be wrong.
     let emailSent = false;
+    let emailError: string | null = null;
     if (temporaryPassword) {
-      const info = await sendEmail({
-        to: email,
-        subject: `Your ${school.name} staff account is ready`,
-        html: staffInviteHtml({
-          name,
-          tempPassword: temporaryPassword,
-          schoolName: school.name,
-          loginUrl,
-        }),
-        text: staffInviteText({
-          name,
-          tempPassword: temporaryPassword,
-          schoolName: school.name,
-          loginUrl,
-        }),
+      const result = await sendCredentialsEmail({
+        to: user.email,
+        name: user.name,
+        schoolName: school.name,
+        role: ROLE_LABEL[membership.role] ?? membership.role,
+        temporaryPassword,
+        signInUrl: `${appUrl()}/login`,
       });
-      emailSent = info !== null;
+      emailSent = result.sent;
+      emailError = result.error ?? null;
     }
 
     return NextResponse.json(
@@ -166,9 +164,8 @@ export async function POST(request: NextRequest) {
         // Null when the person already had a working account. The screen only
         // shows the credentials panel when this is present.
         temporaryPassword,
-        // False when SMTP was not configured or the send failed. The Super Admin
-        // can still copy temporaryPassword from this response.
         emailSent,
+        emailError,
       },
       { status: 201 },
     );

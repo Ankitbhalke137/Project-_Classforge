@@ -1,64 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
-import { handleApiError, NotFoundError, ConflictError } from "@/lib/errors";
+import { prisma } from "@/lib/prisma";
+import { resolveTenantContext } from "@/lib/tenant-context";
+import { handleApiError, NotFoundError } from "@/lib/errors";
+import {
+  deactivateTeacher,
+  formatTeacher,
+  teacherInclude,
+  updateTeacher,
+} from "@/lib/services/teacher-service";
 
-type Context = {
+interface RouteContext {
   params: Promise<{ tenantSlug: string; id: string }>;
-};
+}
 
-const updateTeacherSchema = z
-  .object({
-    firstName: z.string().trim().min(1, "First name cannot be empty.").max(100).optional(),
-    lastName: z.string().trim().min(1, "Last name cannot be empty.").max(100).optional(),
-    employeeNo: z.string().trim().min(1).max(50).optional().nullable(),
-  })
-  .refine(
-    (data) => data.firstName !== undefined || data.lastName !== undefined || data.employeeNo !== undefined,
-    { message: "At least one field must be provided for update." },
-  );
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * GET /api/t/:tenantSlug/teachers/:id
- * Fetches a single teacher by ID within the tenant.
- */
-export async function GET(request: NextRequest, context: Context) {
+function assertValidId(id: string) {
+  if (!UUID_PATTERN.test(id)) throw new NotFoundError("Teacher not found.");
+}
+
+/** GET /api/t/:tenantSlug/teachers/:id — one row from the staff roster. */
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { tenantSlug, id } = await context.params;
+    assertValidId(id);
     const { tenant } = await resolveTenantContext(request, tenantSlug, [
       "SCHOOL_ADMIN",
       "TEACHER",
     ]);
 
-    const teacher = await withTenant(tenant.id, async (tx) => {
-      return tx.teacher.findFirst({
-        where: { id, tenantId: tenant.id },
-        include: {
-          user: { select: { email: true } },
-          teachingAssignments: {
-            select: { sectionId: true, subjectId: true },
-          },
-        },
-      });
+    const teacher = await prisma.teacher.findFirst({
+      where: { id, tenantId: tenant.id },
+      include: teacherInclude(tenant.id),
     });
+    if (!teacher) throw new NotFoundError("Teacher not found.");
 
-    if (!teacher) {
-      throw new NotFoundError("Teacher not found.");
-    }
-
-    return NextResponse.json({
-      id: teacher.id,
-      name: `${teacher.firstName} ${teacher.lastName}`.trim(),
-      email: teacher.user?.email ?? "",
-      employeeNo: teacher.employeeNo ?? "",
-      phone: "",
-      qualification: "",
-      designation: "",
-      joinedOn: teacher.createdAt.toISOString(),
-      subject: "",
-      subjectIds: [...new Set(teacher.teachingAssignments.map((a) => a.subjectId))],
-      classIds: [...new Set(teacher.teachingAssignments.map((a) => a.sectionId))],
-    });
+    return NextResponse.json(formatTeacher(teacher));
   } catch (error) {
     return handleApiError(error);
   }
@@ -66,62 +44,20 @@ export async function GET(request: NextRequest, context: Context) {
 
 /**
  * PATCH /api/t/:tenantSlug/teachers/:id
- * Updates teacher details.
- * SCHOOL_ADMIN only.
+ *
+ * Edits the staff profile, or flips access with `status`. The account row is
+ * kept either way — a teacher who leaves keeps their history.
  */
-export async function PATCH(request: NextRequest, context: Context) {
+export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const { tenantSlug, id } = await context.params;
+    assertValidId(id);
     const { tenant } = await resolveTenantContext(request, tenantSlug, ["SCHOOL_ADMIN"]);
 
-    const body = updateTeacherSchema.parse(await request.json().catch(() => ({})));
+    const body: unknown = await request.json().catch(() => null);
+    const teacher = await updateTeacher(tenant.id, id, body);
 
-    const updated = await withTenant(tenant.id, async (tx) => {
-      const existing = await tx.teacher.findFirst({
-        where: { id, tenantId: tenant.id },
-      });
-      if (!existing) {
-        throw new NotFoundError("Teacher not found.");
-      }
-
-      if (body.employeeNo && body.employeeNo !== existing.employeeNo) {
-        const conflict = await tx.teacher.findFirst({
-          where: { tenantId: tenant.id, employeeNo: body.employeeNo },
-        });
-        if (conflict) {
-          throw new ConflictError("A teacher with this employee number already exists.", {
-            employeeNo: "Employee number is already taken.",
-          });
-        }
-      }
-
-      return tx.teacher.update({
-        where: { id },
-        data: {
-          ...(body.firstName !== undefined ? { firstName: body.firstName } : {}),
-          ...(body.lastName !== undefined ? { lastName: body.lastName } : {}),
-          ...(body.employeeNo !== undefined ? { employeeNo: body.employeeNo } : {}),
-        },
-        include: {
-          user: { select: { email: true } },
-          teachingAssignments: { select: { sectionId: true, subjectId: true } },
-        },
-      });
-    });
-
-    return NextResponse.json({
-      id: updated.id,
-      name: `${updated.firstName} ${updated.lastName}`.trim(),
-      email: updated.user?.email ?? "",
-      employeeNo: updated.employeeNo ?? "",
-      phone: "",
-      qualification: "",
-      designation: "",
-      joinedOn: updated.createdAt.toISOString(),
-      subject: "",
-      subjectIds: [...new Set(updated.teachingAssignments.map((a) => a.subjectId))],
-      classIds: [...new Set(updated.teachingAssignments.map((a) => a.sectionId))],
-    });
+    return NextResponse.json(teacher);
   } catch (error) {
     return handleApiError(error);
   }
@@ -129,28 +65,19 @@ export async function PATCH(request: NextRequest, context: Context) {
 
 /**
  * DELETE /api/t/:tenantSlug/teachers/:id
- * Deletes a teacher record if there are no blocking dependencies.
- * SCHOOL_ADMIN only.
+ *
+ * Deactivates access. The `teachers` row, the `users` row and the membership are
+ * all kept, so reactivation is a PATCH back to ACTIVE.
  */
-export async function DELETE(request: NextRequest, context: Context) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { tenantSlug, id } = await context.params;
+    assertValidId(id);
     const { tenant } = await resolveTenantContext(request, tenantSlug, ["SCHOOL_ADMIN"]);
 
-    await withTenant(tenant.id, async (tx) => {
-      const existing = await tx.teacher.findFirst({
-        where: { id, tenantId: tenant.id },
-      });
-      if (!existing) {
-        throw new NotFoundError("Teacher not found.");
-      }
+    const result = await deactivateTeacher(tenant.id, id);
 
-      await tx.teacher.delete({
-        where: { id },
-      });
-    });
-
-    return NextResponse.json({ message: "Teacher deleted successfully." });
+    return NextResponse.json(result);
   } catch (error) {
     return handleApiError(error);
   }

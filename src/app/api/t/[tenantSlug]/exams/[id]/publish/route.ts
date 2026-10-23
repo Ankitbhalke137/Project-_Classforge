@@ -1,57 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
+import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError, NotFoundError } from "@/lib/errors";
+import { publishExam } from "@/lib/services/exam-service";
 
-type Context = {
-  params: Promise<{ tenantSlug: string; id: string }>;
-};
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * POST /api/t/:tenantSlug/exams/:id/publish
- * Publishes an exam by marking its status as COMPLETED.
- * SCHOOL_ADMIN only.
- */
-export async function POST(request: NextRequest, context: Context) {
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string; id: string }> },
+) {
   try {
     const { tenantSlug, id } = await context.params;
+    if (!UUID.test(id)) throw new NotFoundError("Exam not found.");
     const { tenant } = await resolveTenantContext(request, tenantSlug, ["SCHOOL_ADMIN"]);
-
-    const exam = await withTenant(tenant.id, async (tx) => {
-      const existing = await tx.exam.findFirst({
-        where: { id, tenantId: tenant.id },
-        include: {
-          subject: { select: { name: true } },
-          section: { select: { id: true, name: true } },
-        },
-      });
-
-      if (!existing) {
-        throw new NotFoundError("Exam not found.");
-      }
-
-      return tx.exam.update({
-        where: { id },
-        data: { status: "COMPLETED" },
-        include: {
-          subject: { select: { name: true } },
-          section: { select: { id: true, name: true } },
-        },
-      });
-    });
-
-    return NextResponse.json({
-      id: exam.id,
-      name: `${exam.subject.name} — ${exam.name}`,
-      term: "",
-      classId: exam.sectionId,
-      subjectId: exam.subjectId,
-      teacherId: "",
-      date: exam.examDate.toISOString(),
-      maxMarks: exam.maxMarks,
-      passMarks: 0,
-      status: exam.status,
-      publishedAt: exam.createdAt.toISOString(),
-    });
+    return NextResponse.json(await publishExam(tenant.id, id));
   } catch (error) {
     return handleApiError(error);
   }

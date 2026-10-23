@@ -20,7 +20,21 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
     const [student, teacher] = await Promise.all([
       prisma.student.findFirst({
         where: { tenantId: tenant.id, userId: user.id },
-        include: { enrolments: { select: { sectionId: true } } },
+        include: {
+          enrolments: {
+            where: { status: "ACTIVE" },
+            take: 1,
+            select: {
+              sectionId: true,
+              section: {
+                select: {
+                  name: true,
+                  schoolClass: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
       }),
       prisma.teacher.findFirst({
         where: { tenantId: tenant.id, userId: user.id },
@@ -35,7 +49,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
             name: `${student.firstName} ${student.lastName}`.trim(),
             email: user.email,
             admissionNo: student.admissionNo,
-            className: "",
+            className: student.enrolments[0]
+              ? `${student.enrolments[0].section.schoolClass.name} - ${student.enrolments[0].section.name}`
+              : "",
             status: "ACTIVE",
             classId: student.enrolments[0]?.sectionId ?? "",
             grade: "",

@@ -1,8 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
-import { handleApiError, BadRequestError, NotFoundError } from "@/lib/errors";
+import { resolveTenantContext } from "@/lib/tenant-context";
+import { handleApiError } from "@/lib/errors";
+import { BadRequestError } from "@/lib/errors";
+
+/** Date-only columns are read and written at UTC midnight so they never shift. */
+function parseDay(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+const markSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  classId: z.string().uuid("Choose a class"),
+  records: z
+    .array(
+      z.object({
+        studentId: z.string().uuid(),
+        status: z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]),
+      }),
+    )
+    .min(1, "There is nobody to mark.")
+    .max(500),
+});
 
 /**
  * GET /api/t/:tenantSlug/attendance?date=YYYY-MM-DD
@@ -20,11 +40,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
       throw new BadRequestError("Provide a date as YYYY-MM-DD.");
     }
 
-    const day = new Date(`${raw}T00:00:00`);
+    const day = parseDay(raw);
 
     const records = await prisma.attendanceRecord.findMany({
       where: { tenantId: tenant.id, attendanceDate: day },
-      include: { section: { select: { id: true, name: true, classId: true } } },
+      include: {
+        section: {
+          select: {
+            id: true,
+            name: true,
+            classId: true,
+            schoolClass: { select: { name: true } },
+          },
+        },
+      },
     });
 
     // Group the flat records into one summary per section.
@@ -32,7 +61,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
 
     for (const record of records) {
       const entry = bySection.get(record.sectionId) ?? {
-        className: record.section.name,
+        className: `${record.section.schoolClass.name} - ${record.section.name}`,
         total: 0,
         present: 0,
         absent: 0,
@@ -66,28 +95,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
   }
 }
 
-const markAttendanceSchema = z
-  .object({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD."),
-    sectionId: z.string().uuid().optional(),
-    classId: z.string().uuid().optional(),
-    records: z
-      .array(
-        z.object({
-          studentId: z.string().uuid("Invalid student ID."),
-          status: z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]),
-        }),
-      )
-      .min(1, "At least one attendance record is required."),
-  })
-  .refine((data) => data.sectionId || data.classId, {
-    message: "Either sectionId or classId is required.",
-  });
-
 /**
  * POST /api/t/:tenantSlug/attendance
- * Marks or updates attendance for a section on a given date.
- * Allowed roles: SCHOOL_ADMIN, TEACHER.
+ *
+ * Saves one section's register for one day. A re-save updates the same rows
+ * instead of adding duplicates, which is what a teacher correcting a mistake
+ * expects.
  */
 export async function POST(
   request: NextRequest,
@@ -100,90 +113,88 @@ export async function POST(
       "TEACHER",
     ]);
 
-    const body = markAttendanceSchema.parse(await request.json().catch(() => ({})));
-    const targetId = body.sectionId || body.classId!;
+    const parsed = markSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      throw new BadRequestError(
+        parsed.error.issues[0]?.message ?? "Check the register and try again.",
+      );
+    }
+    const input = parsed.data;
+    const day = parseDay(input.date);
 
-    const saved = await withTenant(tenant.id, async (tx) => {
-      // Find the target section
-      let section = await tx.section.findFirst({
-        where: { id: targetId, tenantId: tenant.id },
-      });
+    const section = await prisma.section.findFirst({
+      where: { id: input.classId, tenantId: tenant.id },
+      select: { id: true },
+    });
+    if (!section) throw new BadRequestError("That class was not found in this school.");
 
-      // If targetId was a class ID, find the first section for that class
-      if (!section) {
-        section = await tx.section.findFirst({
-          where: { classId: targetId, tenantId: tenant.id },
-        });
-      }
-
-      if (!section) {
-        throw new NotFoundError("Section not found in this school.");
-      }
-
-      // If teacher role, verify authorization to mark
-      if (membership.role === "TEACHER") {
-        const teacher = await tx.teacher.findFirst({
-          where: { tenantId: tenant.id, userId: membership.userId },
-        });
-        if (teacher) {
-          const assignment = await tx.teachingAssignment.findFirst({
-            where: { tenantId: tenant.id, teacherId: teacher.id, sectionId: section.id },
-          });
-          // Note: If no specific subject assignment exists, allow if teacher is staff in the school
-        }
-      }
-
-      const attendanceDate = new Date(`${body.date}T00:00:00.000Z`);
-      const results = [];
-
-      for (const record of body.records) {
-        const existing = await tx.attendanceRecord.findFirst({
-          where: {
-            tenantId: tenant.id,
-            sectionId: section.id,
-            studentId: record.studentId,
-            attendanceDate,
-          },
-        });
-
-        if (existing) {
-          const updated = await tx.attendanceRecord.update({
-            where: { id: existing.id },
-            data: {
-              status: record.status,
-              markedBy: membership.userId,
-            },
-          });
-          results.push(updated);
-        } else {
-          const created = await tx.attendanceRecord.create({
-            data: {
-              tenantId: tenant.id,
-              sectionId: section.id,
-              studentId: record.studentId,
-              attendanceDate,
-              status: record.status,
-              markedBy: membership.userId,
-            },
-          });
-          results.push(created);
-        }
-      }
-
-      return results;
+    const enrolments = await prisma.enrolment.findMany({
+      where: {
+        tenantId: tenant.id,
+        sectionId: input.classId,
+        status: "ACTIVE",
+        studentId: { in: input.records.map((record) => record.studentId) },
+      },
+      select: { studentId: true },
     });
 
-    const responseRecords = saved.map((r) => ({
-      id: r.id,
-      date: r.attendanceDate.toISOString().slice(0, 10),
-      classId: r.sectionId,
-      studentId: r.studentId,
-      status: r.status,
-      markedByTeacherId: r.markedBy,
-      markedAt: r.createdAt.toISOString(),
-    }));
+    const enrolled = new Set(enrolments.map((row) => row.studentId));
+    const stranger = input.records.find((record) => !enrolled.has(record.studentId));
+    if (stranger) {
+      throw new BadRequestError(
+        "One of those students is not enrolled in this class. Refresh and try again.",
+      );
+    }
 
-    return NextResponse.json({ records: responseRecords }, { status: 201 });
+    await prisma.$transaction(
+      async (tx) => {
+        for (const record of input.records) {
+          await tx.attendanceRecord.upsert({
+            where: {
+              tenantId_sectionId_studentId_attendanceDate: {
+                tenantId: tenant.id,
+                sectionId: input.classId,
+                studentId: record.studentId,
+                attendanceDate: day,
+              },
+            },
+            create: {
+              tenantId: tenant.id,
+              sectionId: input.classId,
+              studentId: record.studentId,
+              attendanceDate: day,
+              status: record.status,
+              markedBy: membership.userId,
+            },
+            update: {
+              status: record.status,
+              markedBy: membership.userId,
+            },
+          });
+        }
+      },
+      { timeout: 20_000 },
+    );
+
+    const records = await prisma.attendanceRecord.findMany({
+      where: { tenantId: tenant.id, sectionId: input.classId, attendanceDate: day },
+      orderBy: { studentId: "asc" },
+    });
+
+    return NextResponse.json(
+      {
+        records: records.map((record) => ({
+          id: record.id,
+          date: record.attendanceDate.toISOString().slice(0, 10),
+          classId: input.classId,
+          studentId: record.studentId,
+          status: record.status,
+          markedByTeacherId: record.markedBy,
+          markedAt: record.createdAt.toISOString(),
+        })),
+      },
+      { status: 201 },
+    );
   } catch (error) {
     return handleApiError(error);
   }
