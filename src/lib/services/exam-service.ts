@@ -1,3 +1,6 @@
+/**
+ * Exam service: manages exam scheduling, grading, marks upserts, and publishing.
+ */
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { BadRequestError, ConflictError, NotFoundError } from "@/lib/errors";

@@ -49,6 +49,7 @@ import type {
  * own host.
  * ------------------------------------------------------------------ */
 
+export const MOCKS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCKS !== "false";
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 /* ------------------------------------------------------------------ *

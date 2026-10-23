@@ -1,3 +1,6 @@
+/**
+ * Teacher service: manages teacher profiles, staff roster formatting, and account linking.
+ */
 import { randomBytes } from "node:crypto";
 import { hash } from "bcryptjs";
 import { Prisma, MembershipRole, MembershipStatus } from "@prisma/client";

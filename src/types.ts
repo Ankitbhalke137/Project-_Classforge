@@ -416,6 +416,7 @@ export interface MyResults {
   results: MyExamResult[];
 }
 
+
 export interface ReportCardRow {
   examId: string;
   subjectId: string;

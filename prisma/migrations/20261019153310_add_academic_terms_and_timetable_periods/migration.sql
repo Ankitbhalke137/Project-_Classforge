@@ -1,3 +1,18 @@
+/*
+  Warnings:
+
+  - You are about to drop the column `guardian_name` on the `students` table. All the data in the column will be lost.
+  - You are about to drop the column `guardian_phone` on the `students` table. All the data in the column will be lost.
+  - You are about to drop the column `phone` on the `students` table. All the data in the column will be lost.
+  - You are about to drop the column `status` on the `students` table. All the data in the column will be lost.
+
+*/
+-- AlterTable
+ALTER TABLE "students" DROP COLUMN "guardian_name",
+DROP COLUMN "guardian_phone",
+DROP COLUMN "phone",
+DROP COLUMN "status";
+
 -- CreateTable
 CREATE TABLE "academic_terms" (
     "id" UUID NOT NULL,
@@ -26,19 +41,19 @@ CREATE TABLE "timetable_periods" (
 );
 
 -- CreateIndex
+CREATE INDEX "academic_terms_tenant_id_academic_year_id_position_idx" ON "academic_terms"("tenant_id", "academic_year_id", "position");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "academic_terms_tenant_id_id_key" ON "academic_terms"("tenant_id", "id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "academic_terms_tenant_id_academic_year_id_label_key" ON "academic_terms"("tenant_id", "academic_year_id", "label");
 
 -- CreateIndex
-CREATE INDEX "academic_terms_tenant_id_academic_year_id_position_idx" ON "academic_terms"("tenant_id", "academic_year_id", "position");
+CREATE INDEX "timetable_periods_tenant_id_idx" ON "timetable_periods"("tenant_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "timetable_periods_tenant_id_period_key" ON "timetable_periods"("tenant_id", "period");
-
--- CreateIndex
-CREATE INDEX "timetable_periods_tenant_id_idx" ON "timetable_periods"("tenant_id");
 
 -- AddForeignKey
 ALTER TABLE "academic_terms" ADD CONSTRAINT "academic_terms_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;

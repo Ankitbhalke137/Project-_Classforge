@@ -1,3 +1,6 @@
+/**
+ * Report card service: computes published exam results, grade distributions, and student/class ranking.
+ */
 import { prisma } from "@/lib/prisma";
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { GRADE_BANDS, type Grade } from "@/types";

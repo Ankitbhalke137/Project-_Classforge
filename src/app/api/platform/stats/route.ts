@@ -26,7 +26,8 @@ export async function GET(request: NextRequest) {
       suspendedSchoolCount: suspended,
       totalStudents: students,
       totalTeachers: teachers,
-      tenantLimit: 25,
+      // Seats on the current plan. Set by the platform, not fixed in the code.
+      tenantLimit: Number(process.env.PLATFORM_TENANT_LIMIT ?? 25),
     });
   } catch (error) {
     return handleApiError(error);
