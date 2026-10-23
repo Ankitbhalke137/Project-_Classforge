@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { BadRequestError, handleApiError } from "@/lib/errors";
@@ -57,7 +58,37 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const { tenant } = await resolveTenantContext(request, tenantSlug);
+    const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug);
+
+    // Students see school-wide notices plus notices for their own class. Staff
+    // keep the full list because they write and manage notices. The cast keeps
+    // this branch ready for a PARENT membership even though today's enum only
+    // stores staff and students.
+    const role: string = membership.role;
+    const scope: Prisma.AnnouncementWhereInput[] = [];
+    if (role === "STUDENT") {
+      const student = await prisma.student.findFirst({
+        where: { tenantId: tenant.id, userId: user.id },
+        select: {
+          enrolments: {
+            where: { status: "ACTIVE" },
+            select: { sectionId: true },
+          },
+        },
+      });
+      const sectionIds = student?.enrolments.map((row) => row.sectionId) ?? [];
+      scope.push({
+        OR: [
+          { sectionId: null, audience: { hasSome: ["EVERYONE", "STUDENTS"] } },
+          ...(sectionIds.length ? [{ sectionId: { in: sectionIds } }] : []),
+        ],
+      });
+    } else if (role === "PARENT") {
+      scope.push({
+        sectionId: null,
+        audience: { hasSome: ["EVERYONE", "PARENTS"] },
+      });
+    }
 
     const params = request.nextUrl.searchParams;
     const search = (params.get("search") ?? "").trim();
@@ -76,6 +107,7 @@ export async function GET(
     const where = {
       tenantId: tenant.id,
       publishedAt: { not: null },
+      ...(scope.length ? { AND: scope } : {}),
       ...(search
         ? { OR: [{ title: { contains: search } }, { content: { contains: search } }] }
         : {}),

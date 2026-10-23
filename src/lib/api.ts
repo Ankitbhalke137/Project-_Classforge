@@ -15,6 +15,7 @@ import type {
   ExamStatus,
   FeeInvoice,
   FeeSummary,
+  MyResults,
   Paginated,
   Parent,
   PlatformAdmin,
@@ -206,7 +207,7 @@ export const schoolApi = {
       lastName: string;
       admissionNo: string;
       dateOfBirth?: string | null;
-      email?: string | null;
+      email: string;
       phone?: string | null;
       guardianName?: string | null;
       guardianPhone?: string | null;
@@ -224,6 +225,16 @@ export const schoolApi = {
       method: "POST",
       body,
     }),
+
+  /** Issues a fresh temporary password and emails it to the student. */
+  resendStudentCredentials: (schoolSlug: string, id: string) =>
+    api<{
+      email: string;
+      name: string;
+      temporaryPassword: string;
+      emailSent: boolean;
+      emailError: string | null;
+    }>(`/api/t/${schoolSlug}/students/${id}/resend-credentials`, { method: "POST" }),
 
   updateStudent: (
     schoolSlug: string,
@@ -507,6 +518,9 @@ export const schoolApi = {
     schoolSlug: string,
     params: { page?: number; search?: string; term?: string; status?: string; classId?: string } = {},
   ) => api<Paginated<Exam>>(withQuery(`/api/t/${schoolSlug}/exams`, params)),
+  /** Published results for the signed-in student (and an empty list for a parent). */
+  getMyResults: (schoolSlug: string) =>
+    api<MyResults>(`/api/t/${schoolSlug}/me/results`),
   createExam: (
     schoolSlug: string,
     body: {

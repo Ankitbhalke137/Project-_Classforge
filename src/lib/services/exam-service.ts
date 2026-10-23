@@ -229,6 +229,16 @@ export async function updateExam(tenantId: string, id: string, raw: unknown) {
   return formatExam(exam);
 }
 
+export async function getExam(tenantId: string, id: string) {
+  const exam = await prisma.exam.findFirst({
+    where: { id, tenantId },
+    include: examInclude,
+  });
+  if (!exam) throw new NotFoundError("Exam not found.");
+
+  return formatExam(exam);
+}
+
 export async function deleteExam(tenantId: string, id: string) {
   const exam = await prisma.exam.findFirst({
     where: { id, tenantId },
@@ -282,6 +292,86 @@ export async function getExamResults(tenantId: string, examId: string) {
         marksObtained: score,
         grade: gradeFor(score, exam.maxMarks),
         remarks: mark?.remarks ?? null,
+      };
+    }),
+  };
+}
+
+/**
+ * A student's own published results.
+ *
+ * Only exams whose section the student is actively enrolled in, and only after
+ * the results were released (`publishedAt`), so an unpublished paper is never
+ * visible. Marks are filtered to this student — another student's score cannot
+ * be reached through this query.
+ */
+export async function getMyResults(tenantId: string, userId: string) {
+  const student = await prisma.student.findFirst({
+    where: { tenantId, userId },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      admissionNo: true,
+      enrolments: {
+        where: { status: "ACTIVE" },
+        select: { sectionId: true },
+      },
+    },
+  });
+
+  if (!student) {
+    throw new NotFoundError("No student record is linked to this account yet.");
+  }
+
+  const sectionIds = student.enrolments.map((row) => row.sectionId);
+  const base = {
+    student: {
+      id: student.id,
+      name: `${student.firstName} ${student.lastName}`.trim(),
+      admissionNo: student.admissionNo,
+    },
+  };
+
+  if (sectionIds.length === 0) return { ...base, results: [] };
+
+  const exams = await prisma.exam.findMany({
+    where: {
+      tenantId,
+      sectionId: { in: sectionIds },
+      publishedAt: { not: null },
+    },
+    include: {
+      subject: { select: { name: true } },
+      section: { select: { name: true, schoolClass: { select: { name: true } } } },
+      marks: { where: { studentId: student.id } },
+    },
+    orderBy: { examDate: "desc" },
+  });
+
+  return {
+    ...base,
+    results: exams.map((exam) => {
+      const mark = exam.marks[0];
+      const score = mark ? Number(mark.score) : null;
+      return {
+        examId: exam.id,
+        examName: exam.name,
+        subjectId: exam.subjectId,
+        subjectName: exam.subject.name,
+        className: `${exam.section.schoolClass.name} - ${exam.section.name}`,
+        term: exam.term ?? "",
+        date: exam.examDate.toISOString().slice(0, 10),
+        maxMarks: exam.maxMarks,
+        passMarks: exam.passMarks,
+        marksObtained: score,
+        percentage:
+          score === null || exam.maxMarks <= 0
+            ? null
+            : Math.round((score / exam.maxMarks) * 100),
+        grade: gradeFor(score, exam.maxMarks),
+        remarks: mark?.remarks ?? null,
+        publishedAt: exam.publishedAt?.toISOString() ?? null,
       };
     }),
   };

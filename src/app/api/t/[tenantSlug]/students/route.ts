@@ -115,11 +115,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { tenantSlug } = await context.params;
 
-    // Allowed roles: Only SCHOOL_ADMIN can create students
+    // Admins create anywhere; a teacher creates only in a class they teach,
+    // which createStudent() verifies against the teaching assignments.
     const { tenant, membership } = await resolveTenantContext(
       request,
       tenantSlug,
-      ["SCHOOL_ADMIN"],
+      ["SCHOOL_ADMIN", "TEACHER"],
     );
 
     const body = await request.json().catch(() => ({}));
@@ -141,7 +142,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         schoolName: tenant.name,
         role: "Student",
         temporaryPassword,
-        signInUrl: `${appUrl()}/login`,
+        // APP_URL is the production value. The request origin covers local dev
+        // and previews, where APP_URL is often unset, so the link still works.
+        signInUrl: `${appUrl() || request.nextUrl.origin}/login`,
       });
       emailSent = result.sent;
       emailError = result.error ?? null;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
-import { handleApiError, NotFoundError } from "@/lib/errors";
+import { handleApiError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { getTimetable, replaceTimetable } from "@/lib/services/academic-service";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -19,7 +20,25 @@ export async function GET(
   try {
     const { tenantSlug, id } = await context.params;
     if (!UUID.test(id)) throw new NotFoundError("Class not found.");
-    const { tenant } = await resolveTenantContext(request, tenantSlug, [...READ_ROLES]);
+    const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug, [
+      ...READ_ROLES,
+    ]);
+
+    // A student may only read the timetable of their own section.
+    if (membership.role === "STUDENT") {
+      const own = await prisma.student.findFirst({
+        where: {
+          tenantId: tenant.id,
+          userId: user.id,
+          enrolments: { some: { status: "ACTIVE", sectionId: id } },
+        },
+        select: { id: true },
+      });
+      if (!own) {
+        throw new ForbiddenError("You may only view your own class timetable.");
+      }
+    }
+
     const result = await getTimetable(tenant.id, id);
     return NextResponse.json(result.slots);
   } catch (error) {

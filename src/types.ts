@@ -393,6 +393,29 @@ export interface ExamResult {
   admissionNo?: string;
 }
 
+/** One published exam in a student's own results list. */
+export interface MyExamResult {
+  examId: string;
+  examName: string;
+  subjectId: string;
+  subjectName: string;
+  className: string;
+  term: string;
+  date: string;
+  maxMarks: number;
+  passMarks: number;
+  marksObtained: number | null;
+  percentage: number | null;
+  grade: Grade | null;
+  remarks: string | null;
+  publishedAt: string | null;
+}
+
+export interface MyResults {
+  student: { id: string; name: string; admissionNo: string } | null;
+  results: MyExamResult[];
+}
+
 export interface ReportCardRow {
   examId: string;
   subjectId: string;

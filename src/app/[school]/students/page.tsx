@@ -12,7 +12,14 @@ import { PaginationBar } from "@/components/ui/pagination";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
 import { ApiError, schoolApi } from "@/lib/api";
-import { useApi, useCanPerform, useDebounced, useMembership } from "@/lib/hooks";
+import {
+  useApi,
+  useCanPerform,
+  useDebounced,
+  useIdentity,
+  useMembership,
+  useRole,
+} from "@/lib/hooks";
 import type { SchoolClass, Student } from "@/types";
 
 const SORT_OPTIONS = [
@@ -34,7 +41,13 @@ function StudentsRoster() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
   const searchParams = useSearchParams();
   const urlSearch = searchParams.get("search") ?? "";
+  const role = useRole();
+  const { identity } = useIdentity();
   const canManage = useCanPerform("manageRoster");
+  const canCreate = useCanPerform("createStudent");
+  const canResend = useCanPerform("resendStudentCredentials");
+  const isTeacher = role === "TEACHER";
+  const teacherId = identity?.teacher?.id ?? "";
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState(urlSearch);
@@ -48,9 +61,25 @@ function StudentsRoster() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<{
+    student: Student;
+    email: string;
+    temporaryPassword: string;
+    emailSent: boolean;
+    emailError: string | null;
+  } | null>(null);
 
   // Rows are sections ("Grade 6 - A"), so the class filter uses the parent id.
   const classes = useApi(() => schoolApi.listClasses(schoolSlug), [schoolSlug]);
+
+  // A teacher may only add a student to a section they teach or are homeroom of.
+  const assignments = useApi(
+    () =>
+      teacherId
+        ? schoolApi.listTeachingAssignments(schoolSlug, { teacherId })
+        : Promise.resolve([]),
+    [schoolSlug, teacherId],
+  );
 
   const { data, loading, error, reload } = useApi(
     () =>
@@ -74,10 +103,37 @@ function StudentsRoster() {
 
   const filtersActive = Boolean(search || classId);
 
+  const assignedSections = new Set(
+    (assignments.data ?? []).map((row) => row.sectionId),
+  );
+  const formClasses = isTeacher
+    ? (classes.data ?? []).filter(
+        (row) => row.homeroomTeacherId === teacherId || assignedSections.has(row.id),
+      )
+    : classes.data ?? [];
+
   function afterChange(message: string) {
     setNotice(message);
     setActionError(null);
     reload();
+  }
+
+  async function resendCredentials(student: Student) {
+    setPendingId(student.id);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const result = await schoolApi.resendStudentCredentials(schoolSlug, student.id);
+      setCredentials({ student, ...result });
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not resend this student's credentials.",
+      );
+    } finally {
+      setPendingId(null);
+    }
   }
 
   async function reactivate(student: Student) {
@@ -119,7 +175,7 @@ function StudentsRoster() {
           title="Students directory"
           description="Server-paginated roster with search, class filter and sorting."
           action={
-            canManage ? (
+            canCreate ? (
               <Button onClick={() => setAddOpen(true)}>Add student</Button>
             ) : null
           }
@@ -209,7 +265,7 @@ function StudentsRoster() {
                   >
                     Clear filters
                   </Button>
-                ) : canManage ? (
+                ) : canCreate ? (
                   <Button onClick={() => setAddOpen(true)}>Add student</Button>
                 ) : null
               }
@@ -255,41 +311,55 @@ function StudentsRoster() {
                           </Badge>
                         </TD>
                         <TD>
-                          {canManage ? (
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                disabled={busy}
-                                onClick={() => {
-                                  setNotice(null);
-                                  setEditing(student);
-                                }}
-                              >
-                                Edit
-                              </Button>
-                              {student.status === "ACTIVE" ? (
+                          {canManage || (canResend && student.email) ? (
+                            <div className="flex flex-wrap justify-end gap-2">
+                              {canResend && student.email ? (
                                 <Button
                                   variant="secondary"
                                   size="sm"
                                   disabled={busy}
-                                  onClick={() => {
-                                    setNotice(null);
-                                    setDeactivating(student);
-                                  }}
+                                  onClick={() => resendCredentials(student)}
                                 >
-                                  Deactivate
+                                  Resend login
                                 </Button>
-                              ) : (
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  disabled={busy}
-                                  onClick={() => reactivate(student)}
-                                >
-                                  Reactivate
-                                </Button>
-                              )}
+                              ) : null}
+                              {canManage ? (
+                                <>
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    disabled={busy}
+                                    onClick={() => {
+                                      setNotice(null);
+                                      setEditing(student);
+                                    }}
+                                  >
+                                    Edit
+                                  </Button>
+                                  {student.status === "ACTIVE" ? (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      disabled={busy}
+                                      onClick={() => {
+                                        setNotice(null);
+                                        setDeactivating(student);
+                                      }}
+                                    >
+                                      Deactivate
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      disabled={busy}
+                                      onClick={() => reactivate(student)}
+                                    >
+                                      Reactivate
+                                    </Button>
+                                  )}
+                                </>
+                              ) : null}
                             </div>
                           ) : (
                             <span className="block text-right text-xs text-body">View only</span>
@@ -311,7 +381,8 @@ function StudentsRoster() {
         open={addOpen || editing !== null}
         schoolSlug={schoolSlug}
         student={editing}
-        classes={classes.data ?? []}
+        classes={formClasses}
+        isTeacher={isTeacher}
         onClose={() => {
           setAddOpen(false);
           setEditing(null);
@@ -326,6 +397,34 @@ function StudentsRoster() {
           );
         }}
       />
+
+      <Modal
+        open={credentials !== null}
+        onClose={() => setCredentials(null)}
+        title="Login details reissued"
+        description={
+          credentials
+            ? `${credentials.student.name} has a new temporary password.`
+            : undefined
+        }
+        footer={<Button onClick={() => setCredentials(null)}>Done</Button>}
+      >
+        {credentials ? (
+          <div className="space-y-3">
+            <p className="text-sm text-body">
+              {credentials.emailSent
+                ? `The new password was emailed to ${credentials.email}. It is shown once here as a backup.`
+                : "The email could not be sent. Share this password with the student directly."}
+            </p>
+            <p className="select-all rounded-xl border border-line bg-page px-4 py-3 font-mono text-sm text-ink">
+              {credentials.temporaryPassword}
+            </p>
+            {credentials.emailError ? (
+              <p className="text-xs text-danger-600">{credentials.emailError}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
 
       <ConfirmModal
         open={deactivating !== null}
@@ -381,6 +480,7 @@ function StudentFormModal({
   schoolSlug,
   student,
   classes,
+  isTeacher,
   onClose,
   onSaved,
 }: {
@@ -388,6 +488,7 @@ function StudentFormModal({
   schoolSlug: string;
   student: Student | null;
   classes: SchoolClass[];
+  isTeacher: boolean;
   onClose: () => void;
   onSaved: (student: Student, created: boolean) => void;
 }) {
@@ -420,8 +521,13 @@ function StudentFormModal({
     if (!form.firstName.trim()) next.firstName = "First name is required";
     if (!form.lastName.trim()) next.lastName = "Last name is required";
     if (!form.admissionNo.trim()) next.admissionNo = "Admission number is required";
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+    if (!student && !form.email.trim()) {
+      next.email = "Email is required so the student receives a login";
+    } else if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       next.email = "Enter a valid email address";
+    }
+    if (!student && isTeacher && !form.sectionId) {
+      next.sectionId = "Choose one of your classes";
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -439,7 +545,9 @@ function StudentFormModal({
       lastName: form.lastName.trim(),
       admissionNo: form.admissionNo.trim(),
       dateOfBirth: form.dateOfBirth || null,
-      email: form.email.trim() || null,
+      // The create schema requires a string; validation above guarantees it is
+      // present. Editing may clear the address, so the update call maps "" to null.
+      email: form.email.trim(),
       phone: form.phone.trim() || null,
       guardianName: form.guardianName.trim() || null,
       guardianPhone: form.guardianPhone.trim() || null,
@@ -450,6 +558,7 @@ function StudentFormModal({
       if (student) {
         const updated = await schoolApi.updateStudent(schoolSlug, student.id, {
           ...payload,
+          email: payload.email || null,
           status: form.status,
         });
         onSaved(updated, false);
@@ -529,7 +638,7 @@ function StudentFormModal({
       description={
         editing
           ? "Update the student's details, class or status."
-          : "Create the student record. An email address also creates a sign-in account."
+          : "Create the student record and their sign-in account. A temporary password is emailed to the address below."
       }
       size="lg"
       footer={
@@ -582,7 +691,12 @@ function StudentFormModal({
           <Input
             label="Email"
             type="email"
-            hint="Optional. Used for the student's sign-in account."
+            required={!editing}
+            hint={
+              editing
+                ? "Used for the student's sign-in account."
+                : "Required. The student's login and temporary password are sent here."
+            }
             value={form.email}
             error={errors.email}
             onChange={(event) => set("email", event.target.value)}
@@ -609,6 +723,7 @@ function StudentFormModal({
           />
           <Select
             label="Class & section"
+            required={isTeacher && !editing}
             value={form.sectionId}
             error={errors.sectionId}
             options={sectionOptions}
@@ -628,7 +743,9 @@ function StudentFormModal({
         </div>
 
         <p className="text-xs text-body">
-          A class with no sections cannot be selected yet. Create its sections first.
+          {isTeacher
+            ? "You can add a student to a class you teach or are the homeroom teacher of. Ask a School Admin to assign you another class."
+            : "A class with no sections cannot be selected yet. Create its sections first."}
         </p>
       </form>
     </Modal>

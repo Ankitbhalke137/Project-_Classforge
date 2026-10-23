@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError, NotFoundError } from "@/lib/errors";
-import { deactivateTeacher, updateTeacher } from "@/lib/services/teacher-service";
+import {
+  deactivateTeacher,
+  formatTeacher,
+  teacherInclude,
+  updateTeacher,
+} from "@/lib/services/teacher-service";
 
 interface RouteContext {
   params: Promise<{ tenantSlug: string; id: string }>;
@@ -12,6 +18,28 @@ const UUID_PATTERN =
 
 function assertValidId(id: string) {
   if (!UUID_PATTERN.test(id)) throw new NotFoundError("Teacher not found.");
+}
+
+/** GET /api/t/:tenantSlug/teachers/:id — one row from the staff roster. */
+export async function GET(request: NextRequest, context: RouteContext) {
+  try {
+    const { tenantSlug, id } = await context.params;
+    assertValidId(id);
+    const { tenant } = await resolveTenantContext(request, tenantSlug, [
+      "SCHOOL_ADMIN",
+      "TEACHER",
+    ]);
+
+    const teacher = await prisma.teacher.findFirst({
+      where: { id, tenantId: tenant.id },
+      include: teacherInclude(tenant.id),
+    });
+    if (!teacher) throw new NotFoundError("Teacher not found.");
+
+    return NextResponse.json(formatTeacher(teacher));
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
 /**

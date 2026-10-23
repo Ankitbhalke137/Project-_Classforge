@@ -70,7 +70,7 @@ export async function POST(
         schoolName: tenant.name,
         role: "Teacher",
         temporaryPassword,
-        signInUrl: `${appUrl()}/login`,
+        signInUrl: `${appUrl() || request.nextUrl.origin}/login`,
       });
       emailSent = result.sent;
       emailError = result.error ?? null;

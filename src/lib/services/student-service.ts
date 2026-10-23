@@ -46,7 +46,10 @@ export const createStudentSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Date of birth must be in YYYY-MM-DD format")
     .optional()
     .nullable(),
-  email: z.string().trim().email("Invalid email address").optional().nullable(),
+  // Required: a student record without an email cannot sign in and never gets
+  // the credentials mail, so the roster would hold a person who cannot use the
+  // product. Students created before this rule keep their record.
+  email: z.string().trim().email("A valid email address is required"),
   phone: z.string().trim().max(50, "Phone number is too long").optional().nullable(),
   guardianName: z.string().trim().max(150, "Guardian name is too long").optional().nullable(),
   guardianPhone: z.string().trim().max(50, "Guardian phone is too long").optional().nullable(),
@@ -390,9 +393,12 @@ export async function getStudentById(
       (r) => r.status === "EXCUSED",
     ).length;
 
+    // PRD AS-2: (PRESENT + LATE) ÷ all marked days excluding EXCUSED.
+    // An excused day is not a day the student was expected in class.
+    const markedDays = presentCount + absentCount + lateCount;
     const attendanceRate =
-      totalAttendance > 0
-        ? Math.round((presentCount / totalAttendance) * 100)
+      markedDays > 0
+        ? Math.round(((presentCount + lateCount) / markedDays) * 100)
         : null;
 
     const base = formatStudentRecord(student);
@@ -437,17 +443,25 @@ export async function createStudent(
   rawInput: CreateStudentInput,
   userContext: UserContext,
 ) {
-  // Permission check: Only SCHOOL_ADMIN can add students (PRD Page 4 & 5)
-  if (userContext.role !== "SCHOOL_ADMIN") {
-    throw new ForbiddenError("Only School Admins can create student records.");
+  // Admins may add a student to any class. Teachers may add one only to a class
+  // they teach (assigned subject or homeroom) — the ownership check below.
+  if (userContext.role !== "SCHOOL_ADMIN" && userContext.role !== "TEACHER") {
+    throw new ForbiddenError("Only School Admins and Teachers can create student records.");
   }
 
   const input = createStudentSchema.parse(rawInput);
 
+  if (userContext.role === "TEACHER" && !input.sectionId) {
+    throw new BadRequestError(
+      "Choose one of your classes before adding a student.",
+      { sectionId: "Choose a class" },
+    );
+  }
+
   // bcrypt must stay outside the transaction. Hashing inside it, on a cold
   // serverless connection, pushed the first create past the 5s budget (P2028).
-  const candidatePassword = input.email ? randomBytes(12).toString("base64url") : null;
-  const candidateHash = candidatePassword ? await hash(candidatePassword, 10) : null;
+  const candidatePassword = randomBytes(12).toString("base64url");
+  const candidateHash = await hash(candidatePassword, 10);
 
   return withTenant(tenantId, async (tx) => {
     // 1. Verify admission number uniqueness within this school
@@ -484,6 +498,40 @@ export async function createStudent(
         throw new BadRequestError("Specified section does not belong to this school.", {
           sectionId: "Section not found in this school",
         });
+      }
+
+      // A teacher may only add a student to a class they actually teach.
+      if (userContext.role === "TEACHER") {
+        const teacher = await tx.teacher.findFirst({
+          where: { tenantId, userId: userContext.userId },
+          select: { id: true },
+        });
+        if (!teacher) {
+          throw new ForbiddenError(
+            "Your account is not linked to a teacher profile in this school.",
+          );
+        }
+
+        const teaches = await tx.teachingAssignment.findFirst({
+          where: { tenantId, teacherId: teacher.id, sectionId: section.id },
+          select: { id: true },
+        });
+        const homeroom = teaches
+          ? null
+          : await tx.schoolClass.findFirst({
+              where: {
+                tenantId,
+                homeroomTeacherId: teacher.id,
+                sections: { some: { id: section.id } },
+              },
+              select: { id: true },
+            });
+
+        if (!teaches && !homeroom) {
+          throw new ForbiddenError(
+            "You can only add students to a class you teach. Ask a School Admin to assign you first.",
+          );
+        }
       }
 
       // If academicYearId not supplied, pick the active academic year
@@ -533,9 +581,36 @@ export async function createStudent(
         });
       }
 
+      if (user.platformRole === "SUPER_ADMIN") {
+        throw new ConflictError(
+          "That email belongs to a platform administrator and cannot be used for a student.",
+          { email: "Belongs to a platform administrator" },
+        );
+      }
+
       linkedUserId = user.id;
 
-      // Ensure membership exists
+      // Adding a student must never demote a staff member. If the email already
+      // holds a teacher/admin membership in this school, stop and ask for a
+      // different address instead of silently overwriting the role.
+      const existingMembership = await tx.membership.findUnique({
+        where: {
+          tenantId_userId: {
+            tenantId,
+            userId: user.id,
+          },
+        },
+        select: { role: true },
+      });
+      if (existingMembership && existingMembership.role !== "STUDENT") {
+        throw new ConflictError(
+          "That email already belongs to a staff account in this school. Use a different email.",
+          { email: "Already used by a staff account" },
+        );
+      }
+
+      // Ensure membership exists. The role is set on create only; an existing
+      // STUDENT membership is simply reactivated.
       await tx.membership.upsert({
         where: {
           tenantId_userId: {
@@ -544,7 +619,6 @@ export async function createStudent(
           },
         },
         update: {
-          role: "STUDENT",
           status: "ACTIVE",
         },
         create: {
@@ -904,4 +978,88 @@ export async function deleteOrDeactivateStudent(
       status: "INACTIVE",
     };
   }, { timeout: 15_000 });
+}
+
+/**
+ * Issues a fresh temporary password for a student's login.
+ *
+ * The original password is only ever shown once, so a lost mail (or a mail
+ * server that was down) would otherwise leave the student locked out forever.
+ * The caller emails the returned password and shows it once to the staff member.
+ */
+export async function resendStudentCredentials(
+  tenantId: string,
+  studentId: string,
+  userContext: UserContext,
+) {
+  if (userContext.role !== "SCHOOL_ADMIN" && userContext.role !== "TEACHER") {
+    throw new ForbiddenError("You do not have permission to resend these credentials.");
+  }
+
+  const temporaryPassword = randomBytes(12).toString("base64url");
+  const passwordHash = await hash(temporaryPassword, 10);
+
+  return withTenant(tenantId, async (tx) => {
+    const student = await tx.student.findFirst({
+      where: { id: studentId, tenantId },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
+        enrolments: {
+          where: { status: "ACTIVE" },
+          select: { sectionId: true },
+        },
+      },
+    });
+
+    if (!student) throw new NotFoundError("Student not found.");
+    if (!student.user) {
+      throw new BadRequestError(
+        "This student has no login account. Add an email address first.",
+        { email: "No login account" },
+      );
+    }
+
+    if (userContext.role === "TEACHER") {
+      const teacher = await tx.teacher.findFirst({
+        where: { tenantId, userId: userContext.userId },
+        select: { id: true },
+      });
+      if (!teacher) {
+        throw new ForbiddenError("Your account is not linked to a teacher profile in this school.");
+      }
+
+      const sectionIds = student.enrolments.map((row) => row.sectionId);
+      const teaches = sectionIds.length
+        ? await tx.teachingAssignment.findFirst({
+            where: { tenantId, teacherId: teacher.id, sectionId: { in: sectionIds } },
+            select: { id: true },
+          })
+        : null;
+      const homeroom = teaches
+        ? null
+        : await tx.schoolClass.findFirst({
+            where: {
+              tenantId,
+              homeroomTeacherId: teacher.id,
+              sections: { some: { id: { in: sectionIds } } },
+            },
+            select: { id: true },
+          });
+
+      if (!teaches && !homeroom) {
+        throw new ForbiddenError("You can only resend credentials for a student in your own class.");
+      }
+    }
+
+    await tx.user.update({
+      where: { id: student.user.id },
+      data: { passwordHash },
+    });
+
+    return {
+      email: student.user.email,
+      name: student.user.name,
+      temporaryPassword,
+    };
+  });
 }

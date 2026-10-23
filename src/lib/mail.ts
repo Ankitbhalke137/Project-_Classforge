@@ -60,7 +60,15 @@ function fromAddress(): string {
  * fallback for the single-origin setup, where the two are the same thing.
  */
 export function appUrl(): string {
-  return (process.env.APP_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
+  // NEXTAUTH_URL is what many deployments already set for the app's own origin,
+  // so it is accepted here rather than silently producing a relative "/login"
+  // link in the email.
+  return (
+    process.env.APP_URL ??
+    process.env.NEXTAUTH_URL ??
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    ""
+  ).replace(/\/$/, "");
 }
 
 /**
