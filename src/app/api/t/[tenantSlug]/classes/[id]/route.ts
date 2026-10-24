@@ -1,9 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
-import { handleApiError, NotFoundError } from "@/lib/errors";
-import { deleteClass, updateClass } from "@/lib/services/academic-service";
+import { ForbiddenError, handleApiError, NotFoundError } from "@/lib/errors";
+import { deleteClass, listClasses, updateClass } from "@/lib/services/academic-service";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string; id: string }> },
+) {
+  try {
+    const { tenantSlug, id } = await context.params;
+    if (!UUID.test(id)) throw new NotFoundError("Class not found.");
+    const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug, [
+      "SCHOOL_ADMIN",
+      "TEACHER",
+      "STUDENT",
+    ]);
+
+    const row = (await listClasses(tenant.id)).find((entry) => entry.id === id);
+    if (!row) throw new NotFoundError("Class not found.");
+
+    // A student can only read the section they are actively enrolled in.
+    if (membership.role === "STUDENT") {
+      const student = await prisma.student.findFirst({
+        where: { tenantId: tenant.id, userId: user.id },
+        select: {
+          enrolments: {
+            where: { status: "ACTIVE", sectionId: id },
+            select: { id: true },
+          },
+        },
+      });
+      if (!student?.enrolments.length) {
+        throw new ForbiddenError("You can only view your own class.");
+      }
+    }
+
+    return NextResponse.json(row);
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
 
 export async function PATCH(
   request: NextRequest,

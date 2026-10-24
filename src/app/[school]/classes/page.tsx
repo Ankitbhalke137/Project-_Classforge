@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { RequireArea } from "@/components/auth/guards";
+import { StudentClasses } from "@/components/student/student-classes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, StatCard } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import {
   useCanPerform,
   useDebounced,
   useMembership,
+  useRole,
 } from "@/lib/hooks";
 import { formatNumber } from "@/lib/utils";
 import type {
@@ -30,6 +32,12 @@ import type {
 import { WEEKDAYS } from "@/types";
 
 export default function ClassesPage() {
+  const role = useRole();
+  if (role === "STUDENT") return <StudentClasses />;
+  return <StaffClasses />;
+}
+
+function StaffClasses() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
   const canManage = useCanPerform("manageClasses");
 

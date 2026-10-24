@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 import { createSubject, listSubjects } from "@/lib/services/academic-service";
@@ -11,9 +12,29 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const { tenant } = await resolveTenantContext(request, tenantSlug, [...READ_ROLES]);
+    const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug, [
+      ...READ_ROLES,
+    ]);
 
     let rows = await listSubjects(tenant.id);
+
+    // Students only see the subjects attached to their own class.
+    if (membership.role === "STUDENT") {
+      const student = await prisma.student.findFirst({
+        where: { tenantId: tenant.id, userId: user.id },
+        select: {
+          enrolments: {
+            where: { status: "ACTIVE" },
+            select: { section: { select: { classId: true } } },
+          },
+        },
+      });
+      const ownClasses = new Set(
+        student?.enrolments.map((row) => row.section.classId) ?? [],
+      );
+      rows = rows.filter((row) => ownClasses.has(row.classId));
+    }
+
     const classId = request.nextUrl.searchParams.get("classId");
     if (classId) rows = rows.filter((row) => row.classId === classId);
 

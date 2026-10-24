@@ -15,15 +15,19 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "test:ui": "tsx scripts/test-ui.ts",
-    "test:pages": "tsx scripts/test-pages.ts"
+    "test:pages": "tsx scripts/test-pages.ts",
+    "smtp:test": "tsx scripts/test-smtp.ts",
+    "user:super-admin": "tsx scripts/create-super-admin.ts",
+    "user:clear-data": "tsx scripts/clear-platform-data.ts",
+    "test:platform": "tsx scripts/test-platform-crud.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.7",
     "jose": "^6.2.12",
-    "next": "16.4.0",
-    "nodemailer": "^10.1.7",
+    "next": "16.4.3",
+    "nodemailer": "^10.2.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "^4.6.7",

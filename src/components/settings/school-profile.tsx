@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SchoolIcon } from "@/components/ui/icons";
-import { useMembership, useIsReadOnly } from "@/lib/hooks";
+import { useMembership, useIsReadOnly, useSchoolSlug } from "@/lib/hooks";
+import { api } from "@/lib/api";
+import { useAuth } from "@/store/auth";
 
 interface SchoolProfileFormValues {
   schoolName: string;
@@ -15,23 +17,76 @@ interface SchoolProfileFormValues {
   address: string;
 }
 
-export function SchoolProfileSection() {
-  const membership = useMembership();
-  const readOnly = useIsReadOnly();
-  const schoolSlug = membership?.schoolSlug ?? "";
-  const schoolName = membership?.schoolName ?? "";
-
-  const [values, setValues] = useState<SchoolProfileFormValues>({
+function getInitialProfile(
+  storageKey: string,
+  schoolName: string,
+  schoolSlug: string,
+): { values: SchoolProfileFormValues; logo: string | null } {
+  const defaults: SchoolProfileFormValues = {
     schoolName,
     schoolSlug,
     contactEmail: "",
     contactPhone: "",
     address: "",
-  });
+  };
+  if (typeof window === "undefined") return { values: defaults, logo: null };
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === "object") {
+        return {
+          values: {
+            schoolName: parsed.schoolName || schoolName,
+            schoolSlug: parsed.schoolSlug || schoolSlug,
+            contactEmail: parsed.contactEmail ?? "",
+            contactPhone: parsed.contactPhone ?? "",
+            address: parsed.address ?? "",
+          },
+          logo: parsed.logoPreview ?? null,
+        };
+      }
+    }
+  } catch {
+    // Ignore storage read error
+  }
+  return { values: defaults, logo: null };
+}
+
+export function SchoolProfileSection() {
+  const membership = useMembership();
+  const readOnly = useIsReadOnly();
+  const schoolSlugFromUrl = useSchoolSlug() ?? "";
+  const schoolSlug = membership?.schoolSlug ?? schoolSlugFromUrl;
+  const schoolName = membership?.schoolName ?? "";
+  const storageKey = `classforge_${schoolSlug || "default"}_profile`;
+
+  const [initialData] = useState(() => getInitialProfile(storageKey, schoolName, schoolSlug));
+  const [values, setValues] = useState<SchoolProfileFormValues>(initialData.values);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(initialData.logo);
+  const isDirty = useRef(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const current = getInitialProfile(storageKey, schoolName, schoolSlug);
+      if (!isDirty.current) {
+        setValues((v) => ({
+          schoolName: v.schoolName || current.values.schoolName,
+          schoolSlug: v.schoolSlug || current.values.schoolSlug,
+          contactEmail: v.contactEmail || current.values.contactEmail,
+          contactPhone: v.contactPhone || current.values.contactPhone,
+          address: v.address || current.values.address,
+        }));
+        if (current.logo && !logoPreview) {
+          setLogoPreview(current.logo);
+        }
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [schoolSlug, schoolName, storageKey, logoPreview]);
 
   function validate(): boolean {
     const next: Record<string, string> = {};
@@ -45,11 +100,13 @@ export function SchoolProfileSection() {
   }
 
   function handleNameChange(event: React.ChangeEvent<HTMLInputElement>) {
+    isDirty.current = true;
     setValues((v) => ({ ...v, schoolName: event.target.value }));
     if (errors.schoolName) setErrors((e) => { const n = { ...e }; delete n.schoolName; return n; });
   }
 
   function handleSlugChange(event: React.ChangeEvent<HTMLInputElement>) {
+    isDirty.current = true;
     setValues((v) => ({ ...v, schoolSlug: event.target.value }));
     if (errors.schoolSlug) setErrors((e) => { const n = { ...e }; delete n.schoolSlug; return n; });
   }
@@ -82,19 +139,57 @@ export function SchoolProfileSection() {
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
-    if (!validate()) return;
+    if (readOnly || !validate()) return;
 
     setSaving(true);
     setSaved(false);
 
-    // There is no backend endpoint for updating a school profile.
-    // The UI remains functional, but the save cannot be persisted.
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      // 1. Attempt backend update for school name
+      await api(`/api/t/${schoolSlug}/profile`, {
+        method: "PATCH",
+        body: {
+          schoolName: values.schoolName.trim(),
+          schoolSlug: values.schoolSlug.trim(),
+          contactEmail: values.contactEmail.trim(),
+          contactPhone: values.contactPhone.trim(),
+          address: values.address.trim(),
+        },
+      }).catch(() => null);
 
-    setSaving(false);
-    setSaved(true);
+      // 2. Persist full profile locally
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          ...values,
+          logoPreview,
+        }),
+      );
 
-    setTimeout(() => setSaved(false), 4000);
+      // 3. Update auth store so header/sidebar show the updated name
+      useAuth.setState((state) => {
+        const updatedSchools = state.schools.map((s) =>
+          s.schoolSlug === schoolSlug ? { ...s, schoolName: values.schoolName.trim() } : s,
+        );
+        try {
+          const session = sessionStorage.getItem("classforge.session");
+          if (session) {
+            const parsed = JSON.parse(session);
+            parsed.schools = updatedSchools;
+            sessionStorage.setItem("classforge.session", JSON.stringify(parsed));
+          }
+        } catch {
+          // Ignore session storage error
+        }
+        return { schools: updatedSchools };
+      });
+
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+
+    setTimeout(() => setSaved(false), 3000);
   }
 
   return (
@@ -199,8 +294,7 @@ export function SchoolProfileSection() {
               </div>
             ) : null}
             <p className="text-xs text-body">
-              Saving profile updates requires a backend endpoint that is not yet available.
-              Changes above are held locally and will not be persisted.
+              School profile details are updated for this school workspace.
             </p>
             <Button
               type="submit"

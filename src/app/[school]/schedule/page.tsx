@@ -10,7 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
 import { ApiError, schoolApi } from "@/lib/api";
-import { useApi, useCanPerform, useMembership } from "@/lib/hooks";
+import { useApi, useCanPerform, useMembership, useRole } from "@/lib/hooks";
 import type {
   SchoolClass,
   Subject,
@@ -31,6 +31,7 @@ export default function SchedulePage() {
 function Schedule() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
   const searchParams = useSearchParams();
+  const role = useRole();
   const canManage = useCanPerform("manageClasses");
 
   const classes = useApi(() => schoolApi.listClasses(schoolSlug), [schoolSlug]);
@@ -50,10 +51,10 @@ function Schedule() {
   );
   const assignments = useApi(
     () =>
-      currentId
+      currentId && role !== "STUDENT"
         ? schoolApi.listTeachingAssignments(schoolSlug, { sectionId: currentId })
         : Promise.resolve([] as TeachingAssignment[]),
-    [schoolSlug, currentId],
+    [schoolSlug, currentId, role],
   );
 
   const [editing, setEditing] = useState(false);

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ConflictError, handleApiError } from "@/lib/errors";
 import { requireSuperAdmin } from "@/lib/platform-auth";
+import { provisionSchoolCalendar } from "@/lib/school-calendar";
 
 /**
  * GET /api/platform/schools
@@ -69,6 +70,10 @@ export async function POST(request: NextRequest) {
       data: { name, slug },
       include: { _count: { select: { students: true, teachers: true } } },
     });
+
+    // Every school gets its own academic year, terms and timetable, so no two
+    // schools are forced onto the same calendar.
+    await provisionSchoolCalendar(school.id);
 
     return NextResponse.json(
       {
