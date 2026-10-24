@@ -13,6 +13,7 @@ export async function GET(
       "SCHOOL_ADMIN",
       "TEACHER",
       "STUDENT",
+      "PARENT",
     ]);
     return NextResponse.json(await getCalendar(tenant.id));
   } catch (error) {

@@ -291,8 +291,17 @@ export const schoolApi = {
       }>;
     }>(`/api/t/${schoolSlug}/classes`),
 
-  listTeachers: (schoolSlug: string) =>
-    api<Teacher[]>(`/api/t/${schoolSlug}/teachers`),
+  listTeachers: (
+    schoolSlug: string,
+    params: {
+      page?: number;
+      limit?: number;
+      pageSize?: number;
+      search?: string;
+      sort?: string;
+      status?: string;
+    } = {},
+  ) => api<Teacher[] & Paginated<Teacher>>(withQuery(`/api/t/${schoolSlug}/teachers`, params)),
 
   /** Creates the staff profile, the login and the membership in one call. */
   createTeacher: (

@@ -99,7 +99,7 @@ async function main() {
 
   const list = await call(`/api/t/${schoolSlug}/classes`, { cookie: adminLogin.cookie });
   check(
-    list.status === 200 && list.data?.length === 2 && list.data.every((row: any) => row.classId === classId),
+    list.status === 200 && list.data?.length === 2 && list.data.every((row: { classId: string }) => row.classId === classId),
     "class list shows both sections",
     list.data,
   );

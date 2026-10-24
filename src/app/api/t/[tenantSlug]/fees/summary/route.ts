@@ -1,26 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
+import { getFeeSummary } from "@/lib/services/fee-service";
 
 /**
  * GET /api/t/:tenantSlug/fees/summary
  *
- * No fee table exists, so every total is genuinely zero rather than a guess.
- * Delete this route once a `FeeInvoice` model exists.
+ * Calculates real totals for billing, collection, and overdue dues.
  */
-export async function GET(request: NextRequest, context: { params: Promise<{ tenantSlug: string }> }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string }> },
+) {
   try {
     const { tenantSlug } = await context.params;
-    await resolveTenantContext(request, tenantSlug);
+    const { tenant } = await resolveTenantContext(request, tenantSlug);
 
-    return NextResponse.json({
-      totalBilled: 0,
-      totalCollected: 0,
-      outstanding: 0,
-      overdueAmount: 0,
-      overdueCount: 0,
-      collectionRate: 0,
-    });
+    const email = request.nextUrl.searchParams.get("email") ?? undefined;
+    const summary = await getFeeSummary(tenantSlug, tenant.id, email);
+
+    return NextResponse.json(summary);
   } catch (error) {
     return handleApiError(error);
   }

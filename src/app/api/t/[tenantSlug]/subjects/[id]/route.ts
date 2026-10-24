@@ -17,6 +17,7 @@ export async function GET(
       "SCHOOL_ADMIN",
       "TEACHER",
       "STUDENT",
+      "PARENT",
     ]);
 
     const row = (await listSubjects(tenant.id)).find((entry) => entry.id === id);

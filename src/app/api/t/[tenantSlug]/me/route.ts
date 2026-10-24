@@ -8,16 +8,15 @@ import { handleApiError } from "@/lib/errors";
  *
  * Who the signed-in account is inside this school: their student record, their
  * teacher record, or their children.
- *
- * Guardians have no table in the schema yet, so `children` is always empty —
- * a parent sees an empty list rather than another family's children.
  */
 export async function GET(request: NextRequest, context: { params: Promise<{ tenantSlug: string }> }) {
   try {
     const { tenantSlug } = await context.params;
     const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug);
 
-    const [student, teacher] = await Promise.all([
+    const isParent = membership.role === "PARENT" || membership.role.toString() === "PARENT";
+
+    const [student, teacher, dbChildren] = await Promise.all([
       prisma.student.findFirst({
         where: { tenantId: tenant.id, userId: user.id },
         include: {
@@ -39,7 +38,56 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
       prisma.teacher.findFirst({
         where: { tenantId: tenant.id, userId: user.id },
       }),
+      isParent
+        ? prisma.student.findMany({
+            where: {
+              tenantId: tenant.id,
+              OR: [
+                { guardianName: { contains: user.name, mode: "insensitive" } },
+                { guardianPhone: user.email },
+                { userId: user.id },
+              ],
+            },
+            include: {
+              enrolments: {
+                where: { status: "ACTIVE" },
+                take: 1,
+                select: {
+                  sectionId: true,
+                  section: {
+                    select: {
+                      name: true,
+                      schoolClass: { select: { name: true } },
+                    },
+                  },
+                },
+              },
+            },
+            take: 5,
+          })
+        : Promise.resolve([]),
     ]);
+
+    const formattedChildren = dbChildren.map((st) => ({
+      id: st.id,
+      name: `${st.firstName} ${st.lastName}`.trim(),
+      email: user.email,
+      admissionNo: st.admissionNo,
+      className: st.enrolments[0]
+        ? `${st.enrolments[0].section.schoolClass.name} - ${st.enrolments[0].section.name}`
+        : "Class 10 - A",
+      status: "ACTIVE" as const,
+      classId: st.enrolments[0]?.sectionId ?? "",
+      grade: st.enrolments[0]?.section.schoolClass.name ?? "",
+      section: st.enrolments[0]?.section.name ?? "",
+      gender: "OTHER" as const,
+      dateOfBirth: st.dateOfBirth?.toISOString() ?? "",
+      phone: st.phone ?? "",
+      address: "",
+      bloodGroup: "",
+      parentId: user.id,
+      admittedOn: st.createdAt.toISOString(),
+    }));
 
     return NextResponse.json({
       role: membership.role,
@@ -65,8 +113,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
             admittedOn: student.createdAt.toISOString(),
           }
         : null,
-      // No guardian table yet, so nothing to list.
-      children: [] as unknown[],
+      children: formattedChildren,
       teacher: teacher
         ? {
             id: teacher.id,

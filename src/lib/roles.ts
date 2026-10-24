@@ -30,6 +30,7 @@ export const SCHOOL_AREAS = {
   exams: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
   announcements: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
   fees: ["SCHOOL_ADMIN", "PARENT"],
+  parents: ["SCHOOL_ADMIN", "PARENT"],
   "report-cards": ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
   schedule: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
   settings: ["SCHOOL_ADMIN"],

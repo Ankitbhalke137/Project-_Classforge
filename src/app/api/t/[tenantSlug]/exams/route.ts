@@ -12,6 +12,8 @@ export async function GET(
     const { tenant } = await resolveTenantContext(request, tenantSlug, [
       "SCHOOL_ADMIN",
       "TEACHER",
+      "STUDENT",
+      "PARENT",
     ]);
 
     const params = request.nextUrl.searchParams;

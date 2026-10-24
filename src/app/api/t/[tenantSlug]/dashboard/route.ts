@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
+import { getFeeSummary } from "@/lib/services/fee-service";
 
 /**
  * GET /api/t/:tenantSlug/dashboard
@@ -65,28 +66,27 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
       publishedAt: exam.createdAt.toISOString(),
     });
 
+    const feeMetrics = await getFeeSummary(tenantSlug, tenant.id);
+    const guardians = await prisma.student.findMany({
+      where: { tenantId: tenant.id, guardianName: { not: null } },
+      select: { guardianName: true },
+      distinct: ["guardianName"],
+    });
+    const parentCount = guardians.length;
+
     return NextResponse.json({
       schoolSlug: tenant.slug,
       studentCount,
       teacherCount,
       classCount,
-      // Guardians have no table yet, so this is genuinely zero.
-      parentCount: 0,
+      parentCount,
       attendanceToday: {
         date: dayStart.toISOString().slice(0, 10),
         percentage,
         marked: todaysRecords.length,
         total: studentCount,
       },
-      // No fees table yet, so these are all genuinely zero.
-      fees: {
-        totalBilled: 0,
-        totalCollected: 0,
-        outstanding: 0,
-        overdueAmount: 0,
-        overdueCount: 0,
-        collectionRate: 0,
-      },
+      fees: feeMetrics,
       upcomingExams: exams.filter((exam) => exam.status === "SCHEDULED").map(toExam),
       // The schema's ExamStatus has no PUBLISHED state; COMPLETED is the
       // closest equivalent to "results are out".

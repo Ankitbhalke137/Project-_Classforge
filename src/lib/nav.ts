@@ -51,6 +51,7 @@ export const SCHOOL_NAV: NavItem[] = [
   { label: "Exams & Grades", area: "exams", icon: ExamsIcon },
   { label: "Reports", area: "report-cards", path: "reports", icon: ReportsIcon },
   { label: "Fees", area: "fees", icon: FeesIcon },
+  { label: "Parents", area: "parents", path: "parents", icon: StudentsIcon },
   { label: "Announcements", area: "announcements", icon: AnnouncementsIcon },
   { label: "Settings", area: "settings", icon: SettingsIcon },
 ];

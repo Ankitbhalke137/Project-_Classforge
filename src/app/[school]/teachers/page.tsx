@@ -5,24 +5,41 @@ import { RequireArea } from "@/components/auth/guards";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { ConfirmModal, Modal } from "@/components/ui/modal";
+import { PaginationBar } from "@/components/ui/pagination";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
 import { ApiError, schoolApi } from "@/lib/api";
-import { useApi, useCanPerform, useMembership } from "@/lib/hooks";
-import type { Teacher } from "@/types";
+import { useApi, useCanPerform, useDebounced, useMembership } from "@/lib/hooks";
+import type { Paginated, Teacher } from "@/types";
+
+const SORT_OPTIONS = [
+  { value: "name:asc", label: "Name A–Z" },
+  { value: "name:desc", label: "Name Z–A" },
+  { value: "employeeNo:asc", label: "Employee no." },
+  { value: "createdAt:desc", label: "Newest first" },
+] as const;
 
 export default function TeachersPage() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
   const canManage = useCanPerform("manageRoster");
 
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<string>("name:asc");
+  const query = useDebounced(search);
+
   const { data, loading, error, reload } = useApi(
-    () => schoolApi.listTeachers(schoolSlug),
-    [schoolSlug],
+    () =>
+      schoolApi.listTeachers(schoolSlug, {
+        page,
+        search: query,
+        sort,
+      }),
+    [schoolSlug, page, query, sort],
   );
 
-  const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [deactivating, setDeactivating] = useState<Teacher | null>(null);
@@ -30,15 +47,10 @@ export default function TeachersPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const query = search.trim().toLowerCase();
-  const teachers = (data ?? []).filter(
-    (teacher) =>
-      query === "" ||
-      teacher.name.toLowerCase().includes(query) ||
-      teacher.email.toLowerCase().includes(query) ||
-      teacher.employeeNo.toLowerCase().includes(query) ||
-      teacher.subject.toLowerCase().includes(query),
-  );
+  const raw = data as (Paginated<Teacher> | Teacher[] | null);
+  const teachers: Teacher[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
+  const total: number = Array.isArray(raw) ? raw.length : (raw?.total ?? teachers.length);
+  const pageSize: number = Array.isArray(raw) ? 10 : (raw?.pageSize ?? 10);
 
   function afterChange(message: string) {
     setNotice(message);
@@ -101,14 +113,30 @@ export default function TeachersPage() {
         ) : null}
 
         <Card>
-          <div className="border-b border-line p-4">
-            <Input
-              label="Search"
-              type="search"
-              placeholder="Name, email, employee no. or subject"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+          <div className="flex flex-wrap items-center gap-4 border-b border-line p-4">
+            <div className="min-w-[220px] flex-1">
+              <Input
+                label="Search"
+                type="search"
+                placeholder="Name, email, employee no. or subject"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            <div className="w-48">
+              <Select
+                label="Sort by"
+                value={sort}
+                onChange={(event) => {
+                  setSort(event.target.value);
+                  setPage(1);
+                }}
+                options={SORT_OPTIONS}
+              />
+            </div>
           </div>
 
           {loading ? (
@@ -136,91 +164,102 @@ export default function TeachersPage() {
               }
             />
           ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Teacher</TH>
-                  <TH>Employee no.</TH>
-                  <TH>Subject</TH>
-                  <TH>Qualifications</TH>
-                  <TH>Status</TH>
-                  <TH className="text-right">Actions</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {teachers.map((teacher) => {
-                  const busy = pendingId === teacher.id;
+            <>
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Teacher</TH>
+                    <TH>Employee no.</TH>
+                    <TH>Subject</TH>
+                    <TH>Qualifications</TH>
+                    <TH>Status</TH>
+                    <TH className="text-right">Actions</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {teachers.map((teacher) => {
+                    const busy = pendingId === teacher.id;
 
-                  return (
-                    <TR key={teacher.id}>
-                      <TD>
-                        <span className="font-semibold text-primary">{teacher.name}</span>
-                        <span className="block text-xs text-body">
-                          {teacher.email || "No account email"}
-                        </span>
-                        {teacher.phone ? (
-                          <span className="block text-xs text-body">{teacher.phone}</span>
-                        ) : null}
-                      </TD>
-                      <TD>{teacher.employeeNo || "—"}</TD>
-                      <TD>{teacher.subject || "—"}</TD>
-                      <TD>
-                        {teacher.qualification || "—"}
-                        {teacher.designation ? (
-                          <span className="block text-xs text-body">{teacher.designation}</span>
-                        ) : null}
-                      </TD>
-                      <TD>
-                        <Badge tone={teacher.status === "ACTIVE" ? "green" : "neutral"}>
-                          {teacher.status}
-                        </Badge>
-                      </TD>
-                      <TD>
-                        {canManage ? (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              disabled={busy}
-                              onClick={() => {
-                                setNotice(null);
-                                setEditing(teacher);
-                              }}
-                            >
-                              Edit
-                            </Button>
-                            {teacher.status === "ACTIVE" ? (
+                    return (
+                      <TR key={teacher.id}>
+                        <TD>
+                          <span className="font-semibold text-primary">{teacher.name}</span>
+                          <span className="block text-xs text-body">
+                            {teacher.email || "No account email"}
+                          </span>
+                          {teacher.phone ? (
+                            <span className="block text-xs text-body">{teacher.phone}</span>
+                          ) : null}
+                        </TD>
+                        <TD>{teacher.employeeNo || "—"}</TD>
+                        <TD>{teacher.subject || "—"}</TD>
+                        <TD>
+                          {teacher.qualification || "—"}
+                          {teacher.designation ? (
+                            <span className="block text-xs text-body">{teacher.designation}</span>
+                          ) : null}
+                        </TD>
+                        <TD>
+                          <Badge tone={teacher.status === "ACTIVE" ? "green" : "neutral"}>
+                            {teacher.status}
+                          </Badge>
+                        </TD>
+                        <TD>
+                          {canManage ? (
+                            <div className="flex justify-end gap-2">
                               <Button
                                 variant="secondary"
                                 size="sm"
                                 disabled={busy}
                                 onClick={() => {
                                   setNotice(null);
-                                  setDeactivating(teacher);
+                                  setEditing(teacher);
                                 }}
                               >
-                                Deactivate
+                                Edit
                               </Button>
-                            ) : (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                disabled={busy}
-                                onClick={() => reactivate(teacher)}
-                              >
-                                Reactivate
-                              </Button>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="block text-right text-xs text-body">View only</span>
-                        )}
-                      </TD>
-                    </TR>
-                  );
-                })}
-              </TBody>
-            </Table>
+                              {teacher.status === "ACTIVE" ? (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setNotice(null);
+                                    setDeactivating(teacher);
+                                  }}
+                                >
+                                  Deactivate
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={busy}
+                                  onClick={() => reactivate(teacher)}
+                                >
+                                  Reactivate
+                                </Button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="block text-right text-xs text-body">View only</span>
+                          )}
+                        </TD>
+                      </TR>
+                    );
+                  })}
+                </TBody>
+              </Table>
+              <PaginationBar
+                result={{
+                  data: teachers,
+                  total,
+                  page,
+                  pageSize,
+                }}
+                onPageChange={setPage}
+              />
+            </>
           )}
         </Card>
       </div>

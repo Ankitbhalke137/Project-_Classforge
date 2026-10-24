@@ -16,6 +16,7 @@ enum MembershipRole {
   SCHOOL_ADMIN
   TEACHER
   STUDENT
+  PARENT
 }
 
 enum MembershipStatus {
