@@ -41,3 +41,4 @@ yarn-error.log*
 next-env.d.ts
 !.env.example
 AGENTS.md
+PRD_PENDING_AUDIT.md

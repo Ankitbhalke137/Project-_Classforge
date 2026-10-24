@@ -96,7 +96,9 @@ export function AppShell({
           <GlobalSearch schoolSlug={schoolSlug} />
 
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-3">
-            <NotificationsBell />
+            {/* Keyed so a switch to another school re-reads that school's
+                last-seen timestamp instead of carrying this one over. */}
+            <NotificationsBell key={schoolSlug} schoolSlug={schoolSlug} />
             <span className="hidden h-8 w-px bg-line sm:block" aria-hidden="true" />
             <UserMenu />
           </div>

@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/badge";
-import { Dropdown } from "@/components/ui/dropdown";
+import { Dropdown, type DropdownItem } from "@/components/ui/dropdown";
 import {
   BellIcon,
   CheckIcon,
@@ -11,9 +12,10 @@ import {
   SchoolsIcon,
   SearchIcon,
 } from "@/components/ui/icons";
-import { useMembership } from "@/lib/hooks";
+import { schoolApi } from "@/lib/api";
+import { useApi, useMembership } from "@/lib/hooks";
 import { useAuth } from "@/store/auth";
-import { ROLE_LABELS } from "@/types";
+import { type Announcement, ROLE_LABELS } from "@/types";
 
 /**
  * Lets one account move between the schools it belongs to. Switching is just
@@ -145,15 +147,154 @@ export function UserMenu() {
   );
 }
 
-/** Bell with an unread dot. The panel itself is out of scope for this screen. */
-export function NotificationsBell() {
+/** Where a notice sits in the panel's second line. */
+const PRIORITY_LABEL: Record<Announcement["priority"], string> = {
+  NORMAL: "Notice",
+  IMPORTANT: "Important",
+  URGENT: "Urgent",
+};
+
+/**
+ * Last-seen timestamps live in localStorage, namespaced by school: localStorage,
+ * not sessionStorage, so "you have read this" survives a reload, and one
+ * school's read state cannot borrow another school's count.
+ */
+const SEEN_KEY_PREFIX = "classforge.notices.seen.";
+
+function readSeen(key: string): number {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? Number(raw) || 0 : 0;
+  } catch {
+    // A browser with storage blocked still gets the panel; it just never
+    // clears the dot until this session ends.
+    return 0;
+  }
+}
+
+/**
+ * The bell, and the panel behind it.
+ *
+ * The panel lists this school's latest notices and links to the full feed.
+ * "Unread" is the notices published after the last time the panel was opened —
+ * there is no per-user read table, so the timestamp is the honest version of
+ * that number.
+ *
+ * Without a school in the URL there is nothing to notify about (the platform
+ * console sits outside every tenant), so that case says so instead of showing
+ * a dot nobody can clear.
+ */
+export function NotificationsBell({ schoolSlug }: { schoolSlug?: string }) {
+  const router = useRouter();
+  const storageKey = schoolSlug ? `${SEEN_KEY_PREFIX}${schoolSlug}` : null;
+
+  const [seenAt, setSeenAt] = useState<number | null>(() =>
+    // Lazy on purpose: storage exists only in the browser, so the server render
+    // gets null and the client's first render — which is the hydration pass —
+    // still paints the same markup, because no notices have arrived yet at that
+    // point. The dot can only appear once the data lands, after hydration.
+    typeof window === "undefined" || !storageKey ? null : readSeen(storageKey),
+  );
+
+  const notices = useApi(
+    () =>
+      schoolSlug
+        ? schoolApi.listAnnouncements(schoolSlug, { page: 1 })
+        : Promise.resolve({ data: [], total: 0, page: 1, pageSize: 10 }),
+    [schoolSlug],
+  );
+
+  const all = notices.data?.data ?? [];
+  const rows = all.slice(0, 5);
+  const isUnread = (notice: Announcement) =>
+    seenAt !== null && Date.parse(notice.publishedAt) > seenAt;
+  const unread = storageKey && seenAt !== null ? all.filter(isUnread).length : 0;
+
+  // Opening the panel is what marks the notices as seen.
+  function handleOpenChange(isOpen: boolean) {
+    if (!isOpen || !storageKey) return;
+    const now = Date.now();
+    try {
+      window.localStorage.setItem(storageKey, String(now));
+    } catch {
+      // Storage blocked: the dot stays for this load, the panel still works.
+    }
+    setSeenAt(now);
+  }
+
+  const items: DropdownItem[] = [];
+
+  if (!schoolSlug) {
+    items.push({
+      key: "platform",
+      label: "No platform notifications",
+      description: "Notices are posted inside each school.",
+      onSelect: () => {},
+    });
+  } else if (notices.loading) {
+    items.push({
+      key: "loading",
+      label: "Loading notifications…",
+      description: "Fetching this school's notices",
+      onSelect: () => {},
+    });
+  } else if (notices.error) {
+    items.push({
+      key: "error",
+      label: "Couldn't load notifications",
+      description: "Try again in a moment.",
+      onSelect: () => {},
+    });
+  } else if (rows.length === 0) {
+    items.push({
+      key: "empty",
+      label: "No notifications yet",
+      description: "Nothing has been posted to this school.",
+      onSelect: () => {},
+    });
+  } else {
+    for (const notice of rows) {
+      items.push({
+        key: notice.id,
+        label: notice.title,
+        description: `${PRIORITY_LABEL[notice.priority]} · ${notice.publishedAt.slice(0, 10)}`,
+        trailing: isUnread(notice) ? (
+          <span className="size-1.5 shrink-0 rounded-full bg-danger-600" aria-hidden="true" />
+        ) : null,
+        onSelect: () => router.push(`/${schoolSlug}/announcements`),
+      });
+    }
+  }
+
+  if (schoolSlug) {
+    items.push({
+      key: "all",
+      label: "View all announcements",
+      description: "Open the full feed",
+      onSelect: () => router.push(`/${schoolSlug}/announcements`),
+    });
+  }
+
   return (
-    <span className="relative flex size-10 items-center justify-center rounded-xl text-body">
-      <BellIcon width={20} height={20} />
-      <span
-        aria-label="Unread notifications"
-        className="absolute right-2 top-2 size-2 rounded-full bg-danger-600 ring-2 ring-white"
-      />
-    </span>
+    <Dropdown
+      label="Notifications"
+      items={items}
+      onOpenChange={handleOpenChange}
+      panelClassName="w-80 max-w-[calc(100vw-2rem)]"
+      trigger={
+        <span className="relative flex size-10 items-center justify-center rounded-xl text-body transition-colors hover:bg-brand-50">
+          <BellIcon width={20} height={20} />
+          {unread > 0 ? (
+            <span
+              className="absolute right-2 top-2 size-2 rounded-full bg-danger-600 ring-2 ring-white"
+              aria-hidden="true"
+            />
+          ) : null}
+          <span className="sr-only">
+            Notifications{unread > 0 ? `, ${unread} unread` : ""}
+          </span>
+        </span>
+      }
+    />
   );
 }
