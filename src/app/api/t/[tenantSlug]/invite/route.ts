@@ -5,10 +5,10 @@ import { MembershipRole } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
-import { ConflictError, handleApiError } from "@/lib/errors";
+import { ConflictError, NotFoundError, handleApiError } from "@/lib/errors";
 import { sendCredentialsEmail, appUrl } from "@/lib/mail";
 
-/** The roles a School Admin may hand out. Students are created from a roster. */
+/** The roles a School Admin may hand out. */
 const INVITABLE_ROLES = ["TEACHER", "STUDENT"] as const;
 
 const ROLE_LABEL: Record<string, string> = {
@@ -20,29 +20,61 @@ function generateTemporaryPassword(): string {
   return randomBytes(12).toString("base64url");
 }
 
-const inviteSchema = z.object({
-  name: z.string().trim().min(2, "Name is too short.").max(150),
-  email: z
-    .string()
-    .trim()
-    .email("Enter a valid email address.")
-    .transform((email) => email.toLowerCase()),
-  role: z.enum(INVITABLE_ROLES),
-});
+async function generateUniqueAdmissionNo(tenantId: string, preferred?: string): Promise<string> {
+  if (preferred) {
+    const existing = await prisma.student.findUnique({
+      where: { tenantId_admissionNo: { tenantId, admissionNo: preferred } },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictError(`Admission number "${preferred}" is already in use at this school.`, {
+        admissionNo: "Already in use",
+      });
+    }
+    return preferred;
+  }
+
+  const year = new Date().getFullYear();
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const candidate = `STU-${year}-${randomBytes(3).toString("hex").toUpperCase()}`;
+    const existing = await prisma.student.findUnique({
+      where: { tenantId_admissionNo: { tenantId, admissionNo: candidate } },
+      select: { id: true },
+    });
+    if (!existing) return candidate;
+  }
+  return `STU-${year}-${Date.now().toString().slice(-6)}`;
+}
+
+const inviteSchema = z
+  .object({
+    name: z.string().trim().min(2, "Name is too short.").max(150).optional(),
+    firstName: z.string().trim().max(100).optional(),
+    lastName: z.string().trim().max(100).optional(),
+    email: z
+      .string()
+      .trim()
+      .email("Enter a valid email address.")
+      .transform((email) => email.toLowerCase()),
+    role: z.enum(INVITABLE_ROLES),
+    admissionNo: z.string().trim().max(50).optional(),
+    sectionId: z.string().uuid("Invalid section ID").optional().nullable(),
+    academicYearId: z.string().uuid("Invalid academic year ID").optional().nullable(),
+  })
+  .refine(
+    (data) => Boolean(data.name || data.firstName),
+    { message: "Name is required.", path: ["name"] },
+  );
 
 /**
  * POST /api/t/:tenantSlug/invite
  *
  * Adds a person to this school and emails them a temporary password.
  *
- * Only a School Admin may invite. The password is generated, stored as a bcrypt
- * hash and emailed once — it is never kept in the clear, so it cannot be shown
- * again later. If the email cannot be sent the membership still exists and the
- * School Admin shares the password by hand.
- *
- * An email that already has an account keeps its existing password; only the
- * membership is added. An account with no password yet is given one, because
- * otherwise it could never sign in.
+ * Only a School Admin may invite.
+ * - For TEACHER: Creates user, membership, and staff teacher profile.
+ * - For STUDENT: Creates user, membership, student roster record with unique
+ *   admission number, and optional section enrolment.
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ tenantSlug: string }> }) {
   try {
@@ -50,7 +82,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
     const { tenant } = await resolveTenantContext(request, tenantSlug, ["SCHOOL_ADMIN"]);
 
     const body: unknown = await request.json().catch(() => null);
-    const { name, email, role } = inviteSchema.parse(body);
+    const input = inviteSchema.parse(body);
+    const name = input.name || `${input.firstName ?? ""} ${input.lastName ?? ""}`.trim() || "Invited User";
+    const { email, role } = input;
 
     let user = await prisma.user.findUnique({ where: { email } });
     let temporaryPassword: string | null = null;
@@ -91,8 +125,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
       },
     });
 
-    // An invited teacher must also appear on the staff roster. The membership
-    // alone made them a member of the school but invisible to the Teachers page.
+    const [derivedFirst, ...rest] = name.trim().split(/\s+/);
+    const first = input.firstName || derivedFirst || name;
+    const last = input.lastName || rest.join(" ") || (role === "STUDENT" ? "Student" : "Staff");
+
+    // An invited teacher must appear on the staff roster.
     if (role === "TEACHER") {
       const alreadyOnStaff = await prisma.teacher.findFirst({
         where: { tenantId: tenant.id, userId: user.id },
@@ -100,15 +137,83 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
       });
 
       if (!alreadyOnStaff) {
-        const [firstName, ...rest] = name.trim().split(/\s+/);
         await prisma.teacher.create({
           data: {
             tenantId: tenant.id,
             userId: user.id,
-            firstName: firstName || name,
-            lastName: rest.join(" "),
+            firstName: first,
+            lastName: last,
           },
         });
+      }
+    }
+
+    // An invited student must appear on the student roster with an admission number.
+    let studentId: string | undefined;
+    let admissionNo: string | undefined;
+
+    if (role === "STUDENT") {
+      let student = await prisma.student.findFirst({
+        where: { tenantId: tenant.id, userId: user.id },
+      });
+
+      if (!student) {
+        const finalAdmissionNo = await generateUniqueAdmissionNo(tenant.id, input.admissionNo);
+        student = await prisma.student.create({
+          data: {
+            tenantId: tenant.id,
+            userId: user.id,
+            firstName: first,
+            lastName: last,
+            admissionNo: finalAdmissionNo,
+            status: "ACTIVE",
+          },
+        });
+      }
+
+      studentId = student.id;
+      admissionNo = student.admissionNo;
+
+      // If a section is specified, enroll the student
+      if (input.sectionId) {
+        const section = await prisma.section.findFirst({
+          where: { id: input.sectionId, tenantId: tenant.id },
+          include: { schoolClass: true },
+        });
+
+        if (!section) {
+          throw new NotFoundError("Selected class section was not found in this school.");
+        }
+
+        let academicYearId = input.academicYearId || section.schoolClass.academicYearId;
+        if (!academicYearId) {
+          const activeYear = await prisma.academicYear.findFirst({
+            where: { tenantId: tenant.id, status: "ACTIVE" },
+          });
+          academicYearId = activeYear?.id ?? section.schoolClass.academicYearId;
+        }
+
+        const existingEnrolment = await prisma.enrolment.findFirst({
+          where: {
+            tenantId: tenant.id,
+            studentId: student.id,
+            sectionId: section.id,
+            academicYearId,
+            status: "ACTIVE",
+          },
+        });
+
+        if (!existingEnrolment) {
+          await prisma.enrolment.create({
+            data: {
+              tenantId: tenant.id,
+              studentId: student.id,
+              sectionId: section.id,
+              academicYearId,
+              status: "ACTIVE",
+            },
+          });
+        }
       }
     }
 
@@ -130,6 +235,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
     return NextResponse.json(
       {
         userId: user.id,
+        studentId,
+        admissionNo,
+        student: studentId ? { id: studentId, admissionNo } : null,
         name: user.name,
         email: user.email,
         role,

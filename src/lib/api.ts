@@ -110,6 +110,7 @@ export const authApi = {
       method: "POST",
       body: { email, password },
     }),
+  me: () => api<{ user: User; schools: Membership[] }>("/api/auth/me"),
 };
 
 /** Super Admin only. */
@@ -236,8 +237,8 @@ export const schoolApi = {
       }>;
     }>(`/api/t/${schoolSlug}/classes`),
 
-  listTeachers: (schoolSlug: string) =>
-    api<Teacher[]>(`/api/t/${schoolSlug}/teachers`),
+  listTeachers: (schoolSlug: string, params: ListParams = {}) =>
+    api<Paginated<Teacher>>(withQuery(`/api/t/${schoolSlug}/teachers`, params)),
   listParents: (schoolSlug: string, params: ListParams = {}) =>
     api<Paginated<Parent>>(withQuery(`/api/t/${schoolSlug}/parents`, params)),
   listParentChildren: (schoolSlug: string, parentId: string) =>

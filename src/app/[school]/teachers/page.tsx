@@ -6,10 +6,12 @@ import { PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
 import { schoolApi } from "@/lib/api";
 import { useApi, useMembership } from "@/lib/hooks";
+import type { Teacher } from "@/types";
 
 export default function TeachersPage() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
   const { data, loading, error } = useApi(() => schoolApi.listTeachers(schoolSlug), [schoolSlug]);
+  const teachers = Array.isArray(data) ? data : (data as unknown as { data: Teacher[] })?.data ?? [];
 
   return (
     <RequireArea area="teachers">
@@ -26,6 +28,10 @@ export default function TeachersPage() {
             <p className="px-4 py-10 text-center text-sm text-slate-500">
               Could not load teachers.
             </p>
+          ) : teachers.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-slate-500">
+              No teachers found.
+            </p>
           ) : (
             <Table>
               <THead>
@@ -36,7 +42,7 @@ export default function TeachersPage() {
                 </TR>
               </THead>
               <TBody>
-                {data.map((teacher) => (
+                {teachers.map((teacher) => (
                   <TR key={teacher.id}>
                     <TD className="font-medium text-slate-900">{teacher.name}</TD>
                     <TD>{teacher.email}</TD>

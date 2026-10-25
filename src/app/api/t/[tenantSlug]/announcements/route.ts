@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
-import { BadRequestError, handleApiError } from "@/lib/errors";
+import { BadRequestError, ForbiddenError, NotFoundError, handleApiError } from "@/lib/errors";
 
 const AUDIENCES = ["EVERYONE", "STAFF", "TEACHERS", "STUDENTS", "PARENTS"] as const;
 const PRIORITIES = ["NORMAL", "IMPORTANT", "URGENT"] as const;
@@ -11,13 +11,16 @@ const PRIORITIES = ["NORMAL", "IMPORTANT", "URGENT"] as const;
 const createSchema = z.object({
   title: z.string().trim().min(3, "Give the notice a title").max(200),
   body: z.string().trim().min(1, "Write the notice").max(10_000),
-  audience: z.array(z.enum(AUDIENCES)).min(1, "Choose at least one audience"),
+  audience: z.array(z.enum(AUDIENCES)).default(["EVERYONE"]),
   priority: z.enum(PRIORITIES).default("NORMAL"),
   pinned: z.boolean().optional(),
+  sectionId: z.string().uuid("Invalid section ID").optional().nullable(),
 });
 
 type NoticeRow = {
   id: string;
+  tenantId: string;
+  sectionId: string | null;
   title: string;
   content: string;
   audience: string[];
@@ -31,6 +34,7 @@ type NoticeRow = {
 function formatNotice(notice: NoticeRow) {
   return {
     id: notice.id,
+    sectionId: notice.sectionId ?? null,
     title: notice.title,
     body: notice.content,
     audience: notice.audience,
@@ -48,9 +52,9 @@ function formatNotice(notice: NoticeRow) {
 }
 
 /**
- * GET /api/t/:tenantSlug/announcements?page=1&search=&priority=&audience=
+ * GET /api/t/:tenantSlug/announcements?page=1&limit=10&search=&priority=&audience=&sectionId=
  *
- * Newest first, with pinned notices above the rest.
+ * Newest first, with pinned notices above the rest. Returns standardized pagination shape.
  */
 export async function GET(
   request: NextRequest,
@@ -60,10 +64,7 @@ export async function GET(
     const { tenantSlug } = await context.params;
     const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug);
 
-    // Students see school-wide notices plus notices for their own class. Staff
-    // keep the full list because they write and manage notices. The cast keeps
-    // this branch ready for a PARENT membership even though today's enum only
-    // stores staff and students.
+    // Students see school-wide notices plus notices for their own class.
     const role: string = membership.role;
     const scope: Prisma.AnnouncementWhereInput[] = [];
     if (role === "STUDENT") {
@@ -94,8 +95,12 @@ export async function GET(
     const search = (params.get("search") ?? "").trim();
     const priority = params.get("priority") ?? "";
     const audience = params.get("audience") ?? "";
+    const sectionId = params.get("sectionId") ?? "";
     const page = Math.max(Number(params.get("page") ?? 1) || 1, 1);
-    const pageSize = 10;
+    const limit = Math.min(
+      Math.max(Number(params.get("limit") ?? params.get("pageSize") ?? 10) || 10, 1),
+      100,
+    );
 
     if (priority && !PRIORITIES.includes(priority as (typeof PRIORITIES)[number])) {
       throw new BadRequestError("Unknown priority filter.");
@@ -104,12 +109,13 @@ export async function GET(
       throw new BadRequestError("Unknown audience filter.");
     }
 
-    const where = {
+    const where: Prisma.AnnouncementWhereInput = {
       tenantId: tenant.id,
       publishedAt: { not: null },
       ...(scope.length ? { AND: scope } : {}),
+      ...(sectionId ? { sectionId } : {}),
       ...(search
-        ? { OR: [{ title: { contains: search } }, { content: { contains: search } }] }
+        ? { OR: [{ title: { contains: search, mode: "insensitive" } }, { content: { contains: search, mode: "insensitive" } }] }
         : {}),
       ...(priority ? { priority: priority as (typeof PRIORITIES)[number] } : {}),
       ...(audience ? { audience: { has: audience } } : {}),
@@ -121,23 +127,40 @@ export async function GET(
         where,
         include: { creator: { select: { id: true, name: true } } },
         orderBy: [{ pinned: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: (page - 1) * limit,
+        take: limit,
       }),
     ]);
 
+    const totalPages = Math.max(Math.ceil(total / limit), 1);
+
     return NextResponse.json({
       data: notices.map(formatNotice),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
       total,
       page,
-      pageSize,
+      pageSize: limit,
+      limit,
+      totalPages,
     });
   } catch (error) {
     return handleApiError(error);
   }
 }
 
-/** POST /api/t/:tenantSlug/announcements — publishes immediately. */
+/**
+ * POST /api/t/:tenantSlug/announcements
+ *
+ * Publishes an announcement.
+ * - School Admins can post school-wide notices or section-specific notices.
+ * - Teachers are restricted to posting announcements only to sections they are
+ *   assigned to teach or homeroom.
+ */
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ tenantSlug: string }> },
@@ -160,9 +183,60 @@ export async function POST(
     }
 
     const input = parsed.data;
+
+    // Verify section belongs to current tenant if sectionId is passed
+    if (input.sectionId) {
+      const section = await prisma.section.findFirst({
+        where: { id: input.sectionId, tenantId: tenant.id },
+        select: { id: true },
+      });
+      if (!section) {
+        throw new NotFoundError("Selected class section was not found in this school.");
+      }
+    }
+
+    // Teachers must be assigned to the section and cannot post school-wide
+    if (membership.role === "TEACHER") {
+      if (!input.sectionId) {
+        throw new ForbiddenError(
+          "Teachers cannot post school-wide announcements. Please choose an assigned class section.",
+        );
+      }
+
+      const teacher = await prisma.teacher.findFirst({
+        where: { tenantId: tenant.id, userId: membership.userId },
+        select: { id: true },
+      });
+
+      if (!teacher) {
+        throw new ForbiddenError("Your account is not linked to a teacher profile in this school.");
+      }
+
+      const teaches = await prisma.teachingAssignment.findFirst({
+        where: { tenantId: tenant.id, teacherId: teacher.id, sectionId: input.sectionId },
+        select: { id: true },
+      });
+
+      const homeroom = teaches
+        ? null
+        : await prisma.schoolClass.findFirst({
+            where: {
+              tenantId: tenant.id,
+              homeroomTeacherId: teacher.id,
+              sections: { some: { id: input.sectionId } },
+            },
+            select: { id: true },
+          });
+
+      if (!teaches && !homeroom) {
+        throw new ForbiddenError("You can only post announcements to class sections assigned to you.");
+      }
+    }
+
     const notice = await prisma.announcement.create({
       data: {
         tenantId: tenant.id,
+        sectionId: input.sectionId || null,
         createdBy: membership.userId,
         title: input.title,
         content: input.body,

@@ -41,10 +41,16 @@ export default function ClassesPage() {
     [subjects.data],
   );
 
-  const teacherName = useMemo(() => {
-    const map = new Map((teachers.data ?? []).map((teacher) => [teacher.id, teacher.name]));
-    return (id: string | null) => (id ? (map.get(id) ?? "Unassigned") : "Unassigned");
+  const teacherList = useMemo(() => {
+    const raw = teachers.data;
+    if (Array.isArray(raw)) return raw;
+    return (raw as unknown as { data: Teacher[] })?.data ?? [];
   }, [teachers.data]);
+
+  const teacherName = useMemo(() => {
+    const map = new Map(teacherList.map((teacher) => [teacher.id, teacher.name]));
+    return (id: string | null) => (id ? (map.get(id) ?? "Unassigned") : "Unassigned");
+  }, [teacherList]);
 
   const subjectById = useMemo(
     () => new Map((subjects.data ?? []).map((subject) => [subject.id, subject])),
@@ -152,7 +158,7 @@ export default function ClassesPage() {
           schoolSlug={schoolSlug}
           schoolClass={detailFor}
           subjects={subjects.data ?? []}
-          teachers={teachers.data ?? []}
+          teachers={teacherList}
           onClose={() => setDetailFor(null)}
         />
       ) : null}

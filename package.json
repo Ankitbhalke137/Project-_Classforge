@@ -18,6 +18,7 @@
     "user:super-admin": "tsx scripts/create-super-admin.ts",
     "user:clear-data": "tsx scripts/clear-platform-data.ts",
     "test:platform": "tsx scripts/test-platform-crud.ts",
+    "test:p1": "tsx scripts/test-p1-implementation.ts",
     "db:assign-teachers": "tsx scripts/assign-students-to-teachers.ts",
     "db:seed-demo": "tsx scripts/seed-demo-students.ts",
     "db:assign-noida": "tsx scripts/assign-noida-teacher.ts"

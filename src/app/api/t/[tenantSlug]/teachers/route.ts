@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 import { sendCredentialsEmail, appUrl } from "@/lib/mail";
 import {
   createTeacher,
-  formatTeacher,
-  teacherInclude,
+  listTeachers,
 } from "@/lib/services/teacher-service";
 
 /**
- * GET /api/t/:tenantSlug/teachers
+ * GET /api/t/:tenantSlug/teachers?page=&limit=&search=&sort=&status=
  *
- * The staff roster. Phone, qualification and designation now have columns; the
- * subject cell is composed from the teacher's teaching assignments, so it stays
- * blank until assignments exist rather than being invented.
+ * The staff roster with server-side pagination, search, and sorting.
  */
 export async function GET(
   request: NextRequest,
@@ -27,13 +23,16 @@ export async function GET(
       "TEACHER",
     ]);
 
-    const teachers = await prisma.teacher.findMany({
-      where: { tenantId: tenant.id },
-      include: teacherInclude(tenant.id),
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    const params = request.nextUrl.searchParams;
+    const result = await listTeachers(tenant.id, {
+      page: Number(params.get("page") ?? 1) || 1,
+      limit: Number(params.get("limit") ?? params.get("pageSize")) || undefined,
+      search: params.get("search") ?? undefined,
+      sort: params.get("sort") ?? undefined,
+      status: (params.get("status") as "ACTIVE" | "INACTIVE" | "ALL") ?? undefined,
     });
 
-    return NextResponse.json(teachers.map(formatTeacher));
+    return NextResponse.json(result);
   } catch (error) {
     return handleApiError(error);
   }

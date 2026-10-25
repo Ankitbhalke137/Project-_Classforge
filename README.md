@@ -20,17 +20,29 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000. The mock API starts automatically and the sign-in
-screen lists the demo accounts — password for all of them is `demo1234`.
+Open http://localhost:3000.
+
+### Authentication & Demo Accounts
+
+The project supports two runtime modes configured via `NEXT_PUBLIC_ENABLE_MOCKS`:
+
+#### 1. Mock Mode (`NEXT_PUBLIC_ENABLE_MOCKS=true`, Default)
+The in-browser mock service worker (MSW) intercepts network requests. The sign-in screen lists the following pre-configured demo personas — password for all of them is `demo1234`:
 
 | Account | What it shows |
 | --- | --- |
 | `admin@classforge.dev` | Super Admin — the `/platform` area |
 | `principal@greenwood.edu` | School Admin, member of two schools, full sidebar |
-| `teacher@greenwood.edu` | Teacher — no school switching |
-| `student@greenwood.edu` | Student — read only, short sidebar |
+| `teacher@greenwood.edu` | Teacher — assigned classes and roster |
+| `student@greenwood.edu` | Student — read-only view of own records |
 | `parent@greenwood.edu` | Parent — two children, fees and report cards |
 | `principal@northgate.edu` | School Admin of a suspended school — read-only |
+
+#### 2. Live Backend Mode (`NEXT_PUBLIC_ENABLE_MOCKS=false`)
+Requests are served by the Next.js App Router API routes against the PostgreSQL database:
+- **Platform Super Admin:** Provisioned via `npm run db:seed`. Credentials are configured in `.env.local` using `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `SUPER_ADMIN_NAME`.
+- **School Admins & Staff:** Created via the Super Admin platform console (`/platform/schools`) or invited via `/api/t/:slug/invite`.
+- **Students & Guardians:** Enrolled through `/api/t/:slug/students` or invited via `/api/t/:slug/invite` with the `STUDENT` role. Temporary passwords are generated and returned in the API response or emailed via SMTP.
 
 | Script | Purpose |
 | --- | --- |
@@ -38,13 +50,18 @@ screen lists the demo accounts — password for all of them is `demo1234`.
 | `npm run build` | Production build |
 | `npm run start` | Serve the production build |
 | `npm run lint` | ESLint |
+| `npm run db:seed` | Provision platform Super Admin in live database |
 
 ## Environment
 
 | Variable | Meaning |
 | --- | --- |
-| `NEXT_PUBLIC_ENABLE_MOCKS` | `true` (default) uses the mock API. Set `false` to talk to the real backend. |
+| `NEXT_PUBLIC_ENABLE_MOCKS` | `true` (default) uses mock fixtures. Set `false` to use live PostgreSQL backend. |
 | `NEXT_PUBLIC_API_BASE_URL` | Backend base URL. Unused while mocks are on. |
+| `DATABASE_URL` | PostgreSQL connection string for Prisma. |
+| `JWT_SECRET` | Secret key for signing session tokens. |
+| `SUPER_ADMIN_EMAIL` | Initial Super Admin login email for `npm run db:seed`. |
+| `SUPER_ADMIN_PASSWORD` | Initial Super Admin password for `npm run db:seed`. |
 
 ## Folder structure
 
@@ -150,14 +167,17 @@ All of these are in `src/lib/api.ts` and answered by `src/mocks/api.ts`:
 
 ```
 POST   /api/auth/login
+GET    /api/auth/me
 GET    /api/platform/schools            POST /api/platform/schools
 PATCH  /api/platform/schools/:slug      GET  /api/platform/stats
 
-GET    /api/t/:slug/students            ?page search classId status
+POST   /api/t/:slug/invite              (Supports SCHOOL_ADMIN, TEACHER, and STUDENT roles)
+GET    /api/t/:slug/students            ?page limit search classId sectionId status sort
 GET    /api/t/:slug/students/:id
 GET    /api/t/:slug/students/:id/attendance   ?days
 GET    /api/t/:slug/students/:id/report-card  ?term
-GET    /api/t/:slug/teachers            ?search
+POST   /api/t/:slug/students/:id/resend-credentials
+GET    /api/t/:slug/teachers            ?page limit search sort
 GET    /api/t/:slug/parents             ?page search
 GET    /api/t/:slug/parents/:id/children
 GET    /api/t/:slug/subjects
@@ -167,12 +187,12 @@ GET    /api/t/:slug/attendance          ?date classId
 GET    /api/t/:slug/attendance/register ?classId date
 POST   /api/t/:slug/attendance
 GET    /api/t/:slug/attendance/trend    ?days
-GET    /api/t/:slug/exams               ?page search term status classId
+GET    /api/t/:slug/exams               ?page limit search term status classId
 GET    /api/t/:slug/exams/:id/results
 POST   /api/t/:slug/exams/:id/publish
 GET    /api/t/:slug/report-cards        ?classId term
-GET    /api/t/:slug/announcements       ?page search priority audience
-POST   /api/t/:slug/announcements
+GET    /api/t/:slug/announcements       ?page limit search priority audience sectionId
+POST   /api/t/:slug/announcements       (Section-scoped announcements with sectionId)
 GET    /api/t/:slug/fees                ?page search status classId term
 GET    /api/t/:slug/fees/summary
 GET    /api/t/:slug/dashboard

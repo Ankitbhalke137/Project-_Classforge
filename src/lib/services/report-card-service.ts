@@ -4,7 +4,7 @@
 import { prisma } from "@/lib/prisma";
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { GRADE_BANDS, type Grade } from "@/types";
-import type { UserContext } from "@/lib/services/student-service";
+import { getTeacherAssignedSectionIds, type UserContext } from "@/lib/services/student-service";
 
 type ReportRow = {
   examId: string;
@@ -275,6 +275,34 @@ export async function getStudentReportCard(
       select: { id: true },
     });
     if (!own) throw new ForbiddenError("You may only view your own report card.");
+  }
+
+  if (userContext.role === "TEACHER") {
+    const assignedSectionIds = await getTeacherAssignedSectionIds(
+      prisma,
+      tenantId,
+      userContext.userId,
+    );
+    const student = await prisma.student.findFirst({
+      where: { id: studentId, tenantId },
+      include: {
+        enrolments: {
+          where: { status: "ACTIVE" },
+          select: { sectionId: true },
+        },
+      },
+    });
+    if (!student) {
+      throw new NotFoundError("Student not found.");
+    }
+    const isAssigned = student.enrolments.some((e) =>
+      assignedSectionIds.includes(e.sectionId),
+    );
+    if (!isAssigned) {
+      throw new ForbiddenError(
+        "You can only view report cards for students in classes assigned to you.",
+      );
+    }
   }
 
   return buildReportCard(tenantId, studentId, term);
