@@ -1,22 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
+import { listFees } from "@/lib/services/fee-service";
 
 /**
  * GET /api/t/:tenantSlug/fees
  *
- * There is no fee or invoice table in the schema, so there is nothing to read
- * and nothing to invent. This answers with an empty page, which is exactly what
- * "the database has no fees" should look like to the screen.
- *
- * Delete this route once a `FeeInvoice` model exists and it can query for real.
+ * Lists fee invoices with filtering and pagination.
  */
-export async function GET(request: NextRequest, context: { params: Promise<{ tenantSlug: string }> }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ tenantSlug: string }> },
+) {
   try {
     const { tenantSlug } = await context.params;
-    await resolveTenantContext(request, tenantSlug);
+    const { tenant } = await resolveTenantContext(request, tenantSlug);
 
-    return NextResponse.json({ data: [], total: 0, page: 1, pageSize: 10 });
+    const searchParams = request.nextUrl.searchParams;
+    const query = {
+      page: searchParams.get("page") ? Number(searchParams.get("page")) : undefined,
+      pageSize: searchParams.get("pageSize") ? Number(searchParams.get("pageSize")) : undefined,
+      search: searchParams.get("search") ?? undefined,
+      status: searchParams.get("status") ?? undefined,
+      classId: searchParams.get("classId") ?? undefined,
+      term: searchParams.get("term") ?? undefined,
+      email: searchParams.get("email") ?? undefined,
+    };
+
+    const result = await listFees(tenantSlug, tenant.id, query);
+    return NextResponse.json(result);
   } catch (error) {
     return handleApiError(error);
   }

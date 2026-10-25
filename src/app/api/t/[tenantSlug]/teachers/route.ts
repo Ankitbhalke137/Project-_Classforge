@@ -6,15 +6,14 @@ import { sendCredentialsEmail, appUrl } from "@/lib/mail";
 import {
   createTeacher,
   formatTeacher,
+  listTeachers,
   teacherInclude,
 } from "@/lib/services/teacher-service";
 
 /**
  * GET /api/t/:tenantSlug/teachers
  *
- * The staff roster. Phone, qualification and designation now have columns; the
- * subject cell is composed from the teacher's teaching assignments, so it stays
- * blank until assignments exist rather than being invented.
+ * The staff roster. Supports search, sort, and pagination.
  */
 export async function GET(
   request: NextRequest,
@@ -27,8 +26,37 @@ export async function GET(
       "TEACHER",
     ]);
 
+    const searchParams = request.nextUrl.searchParams;
+    const hasPagination =
+      searchParams.has("page") || searchParams.has("pageSize") || searchParams.has("limit");
+    const query = {
+      page: searchParams.get("page") ? Number(searchParams.get("page")) : undefined,
+      limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
+      pageSize: searchParams.get("pageSize") ? Number(searchParams.get("pageSize")) : undefined,
+      search: searchParams.get("search") ?? undefined,
+      sort: searchParams.get("sort") ?? undefined,
+      status: (searchParams.get("status") as "ACTIVE" | "INACTIVE" | "ALL") ?? undefined,
+    };
+
+    if (hasPagination) {
+      const result = await listTeachers(tenant.id, query);
+      return NextResponse.json(result);
+    }
+
     const teachers = await prisma.teacher.findMany({
-      where: { tenantId: tenant.id },
+      where: {
+        tenantId: tenant.id,
+        ...(query.search
+          ? {
+              OR: [
+                { firstName: { contains: query.search, mode: "insensitive" } },
+                { lastName: { contains: query.search, mode: "insensitive" } },
+                { employeeNo: { contains: query.search, mode: "insensitive" } },
+                { user: { email: { contains: query.search, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+      },
       include: teacherInclude(tenant.id),
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     });

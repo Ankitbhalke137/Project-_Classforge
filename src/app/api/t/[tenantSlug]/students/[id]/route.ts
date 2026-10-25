@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { tenant, membership } = await resolveTenantContext(
       request,
       tenantSlug,
-      ["SCHOOL_ADMIN", "TEACHER", "STUDENT"],
+      ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
     );
 
     const student = await getStudentById(tenant.id, id, {

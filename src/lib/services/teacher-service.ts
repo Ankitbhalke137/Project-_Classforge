@@ -331,3 +331,98 @@ export async function deactivateTeacher(tenantId: string, teacherId: string) {
 
   return { deactivated: true, status: "INACTIVE" as const };
 }
+
+export interface TeacherListQuery {
+  page?: number;
+  limit?: number;
+  pageSize?: number;
+  search?: string;
+  sort?: string;
+  status?: "ACTIVE" | "INACTIVE" | "ALL";
+}
+
+/** Lists teachers with pagination, search, and sorting. */
+export async function listTeachers(tenantId: string, query: TeacherListQuery = {}) {
+  const where: Prisma.TeacherWhereInput = { tenantId };
+
+  const s = query.search?.trim();
+  if (s) {
+    where.OR = [
+      { firstName: { contains: s, mode: "insensitive" } },
+      { lastName: { contains: s, mode: "insensitive" } },
+      { employeeNo: { contains: s, mode: "insensitive" } },
+      { phone: { contains: s, mode: "insensitive" } },
+      { qualification: { contains: s, mode: "insensitive" } },
+      { designation: { contains: s, mode: "insensitive" } },
+      { user: { email: { contains: s, mode: "insensitive" } } },
+      {
+        teachingAssignments: {
+          some: {
+            subject: {
+              name: { contains: s, mode: "insensitive" },
+            },
+          },
+        },
+      },
+    ];
+  }
+
+  if (query.status && query.status !== "ALL") {
+    where.user = {
+      is: {
+        memberships: {
+          some: {
+            tenantId,
+            role: MembershipRole.TEACHER,
+            status: query.status === "ACTIVE" ? MembershipStatus.ACTIVE : MembershipStatus.INACTIVE,
+          },
+        },
+      },
+    };
+  }
+
+  let orderBy: Prisma.TeacherOrderByWithRelationInput[] = [
+    { lastName: "asc" },
+    { firstName: "asc" },
+  ];
+
+  if (query.sort) {
+    const [field, direction] = query.sort.split(":");
+    const dir = direction?.toLowerCase() === "desc" ? ("desc" as const) : ("asc" as const);
+    switch (field) {
+      case "name":
+        orderBy = [{ firstName: dir }, { lastName: dir }];
+        break;
+      case "employeeNo":
+        orderBy = [{ employeeNo: dir }];
+        break;
+      case "createdAt":
+        orderBy = [{ createdAt: dir }];
+        break;
+      default:
+        orderBy = [{ lastName: "asc" }, { firstName: "asc" }];
+    }
+  }
+
+  const page = Math.max(1, Number(query.page) || 1);
+  const pageSize = Math.max(1, Number(query.pageSize || query.limit) || 10);
+  const skip = (page - 1) * pageSize;
+
+  const [total, teachers] = await Promise.all([
+    prisma.teacher.count({ where }),
+    prisma.teacher.findMany({
+      where,
+      include: teacherInclude(tenantId),
+      orderBy,
+      skip,
+      take: pageSize,
+    }),
+  ]);
+
+  return {
+    data: teachers.map(formatTeacher),
+    total,
+    page,
+    pageSize,
+  };
+}
