@@ -15,7 +15,7 @@ function TeachersOverview({ schoolSlug }: { schoolSlug: string }) {
   const teachers = useApi(() => schoolApi.listTeachers(schoolSlug), [schoolSlug]);
 
   if (teachers.loading) return <TableSkeleton rows={5} columns={5} />;
-  const rows = teachers.data ?? [];
+  const rows = teachers.data?.data ?? [];
   if (teachers.error) return <div className="text-xs text-danger-600">Failed to load teachers.</div>;
 
   return (

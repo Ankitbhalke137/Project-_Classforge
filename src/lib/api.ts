@@ -118,6 +118,12 @@ export const authApi = {
     }),
 
   /**
+   * The signed-in account's profile and the active schools it can switch
+   * between. Validates the session cookie on every call.
+   */
+  me: () => api<{ user: User; schools: Membership[] }>("/api/auth/me"),
+
+  /**
    * Changes the signed-in account's own password.
    *
    * The server asks for the current password, so this cannot be used to take
@@ -291,8 +297,10 @@ export const schoolApi = {
       }>;
     }>(`/api/t/${schoolSlug}/classes`),
 
-  listTeachers: (schoolSlug: string) =>
-    api<Teacher[]>(`/api/t/${schoolSlug}/teachers`),
+  listTeachers: (
+    schoolSlug: string,
+    params: { page?: number; pageSize?: number; search?: string; sort?: string } = {},
+  ) => api<Paginated<Teacher>>(withQuery(`/api/t/${schoolSlug}/teachers`, params)),
 
   /** Creates the staff profile, the login and the membership in one call. */
   createTeacher: (
@@ -631,7 +639,10 @@ export const schoolApi = {
   ) => api<Paginated<Announcement>>(withQuery(`/api/t/${schoolSlug}/announcements`, params)),
   createAnnouncement: (
     schoolSlug: string,
-    body: Pick<Announcement, "title" | "body" | "audience" | "priority"> & { pinned?: boolean },
+    body: Pick<Announcement, "title" | "body" | "audience" | "priority"> & {
+      pinned?: boolean;
+      sectionId?: string | null;
+    },
   ) => api<Announcement>(`/api/t/${schoolSlug}/announcements`, { method: "POST", body }),
 
   /* --- Invites --- */

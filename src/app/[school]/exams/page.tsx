@@ -9,6 +9,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/states";
+import { PaginationBar } from "@/components/ui/pagination";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
 import { ApiError, schoolApi } from "@/lib/api";
 import {
@@ -35,15 +36,18 @@ function StaffExams() {
   const router = useRouter();
   const { calendar } = useSchoolCalendar();
   const [createOpen, setCreateOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
 
   const { data, loading, error, reload } = useApi(
-    () => schoolApi.listExams(schoolSlug, {}),
-    [schoolSlug],
+    () => schoolApi.listExams(schoolSlug, { page, search: search || undefined }),
+    [schoolSlug, page, search],
   );
   const classes = useApi(() => schoolApi.listClasses(schoolSlug), [schoolSlug]);
   const subjects = useApi(() => schoolApi.listSubjects(schoolSlug), [schoolSlug]);
 
   const exams = data?.data ?? [];
+  const paginated = data ?? null;
 
   return (
     <RequireArea area="exams">
@@ -57,6 +61,20 @@ function StaffExams() {
             </Button>
           }
         />
+
+        <div className="flex gap-2">
+          <Input
+            label="Search"
+            type="search"
+            placeholder="Search exams by name or subject"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+            className="max-w-sm"
+          />
+        </div>
 
         <Card>
           <CardHeader title="Exams" description="Exam sessions across terms" />
@@ -137,6 +155,9 @@ function StaffExams() {
                           })}
                         </TBody>
                       </Table>
+                      {paginated && (
+                        <PaginationBar result={paginated} onPageChange={setPage} />
+                      )}
                     </>
                   )}
           </CardBody>

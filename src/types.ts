@@ -481,6 +481,8 @@ export interface Announcement {
   eventDate: string | null;
   attachments: AnnouncementAttachment[];
   readCount: number;
+  /** Set when the notice is addressed to one section; null for school-wide. */
+  sectionId: string | null;
 }
 
 /* ---------- Fees ---------- */

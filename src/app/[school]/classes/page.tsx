@@ -123,7 +123,7 @@ function StaffClasses() {
           />
           <StatCard
             label="Teachers"
-            value={teachers.data ? formatNumber(teachers.data.length) : "—"}
+            value={teachers.data?.data ? formatNumber(teachers.data.data.length) : "—"}
             hint="On staff"
           />
         </div>
@@ -212,7 +212,7 @@ function StaffClasses() {
         schoolSlug={schoolSlug}
         schoolClass={null}
         years={years.data ?? []}
-        teachers={teachers.data ?? []}
+        teachers={teachers.data?.data ?? []}
         onClose={() => setCreateOpen(false)}
         onSaved={(message) => {
           setCreateOpen(false);
@@ -231,7 +231,7 @@ function StaffClasses() {
             (subject) => subject.classId === (detailFor.classId ?? detailFor.id),
           )}
           allSubjects={subjects.data ?? []}
-          teachers={teachers.data ?? []}
+          teachers={teachers.data?.data ?? []}
           canManage={canManage}
           onClose={() => setDetailFor(null)}
           onChanged={(message) => {
