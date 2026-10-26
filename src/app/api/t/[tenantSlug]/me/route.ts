@@ -96,6 +96,16 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
       admittedOn: st.createdAt.toISOString(),
     }));
 
+    // A teacher's assigned classes = sections they teach + sections of classes
+    // they are homeroom teacher of. A homeroom-only teacher (no assignments yet)
+    // still needs to see their class on the dashboard.
+    const homeroomClasses = teacher
+      ? await prisma.schoolClass.findMany({
+          where: { tenantId: tenant.id, homeroomTeacherId: teacher.id },
+          select: { sections: { select: { id: true } } },
+        })
+      : [];
+
     return NextResponse.json({
       role: membership.role,
       student: student
@@ -142,7 +152,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
               ...new Set(teacher.teachingAssignments.map((row) => row.subjectId)),
             ],
             classIds: [
-              ...new Set(teacher.teachingAssignments.map((row) => row.sectionId)),
+              ...new Set([
+                ...teacher.teachingAssignments.map((row) => row.sectionId),
+                ...homeroomClasses.flatMap((c) => c.sections.map((s) => s.id)),
+              ]),
             ],
           }
         : null,
