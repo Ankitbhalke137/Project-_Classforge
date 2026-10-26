@@ -37,6 +37,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
       }),
       prisma.teacher.findFirst({
         where: { tenantId: tenant.id, userId: user.id },
+        include: {
+          teachingAssignments: {
+            include: {
+              subject: { select: { name: true } },
+            },
+          },
+        },
       }),
       isParent
         ? prisma.student.findMany({
@@ -120,13 +127,23 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
             name: `${teacher.firstName} ${teacher.lastName}`.trim(),
             email: user.email,
             employeeNo: teacher.employeeNo ?? "",
-            subject: "",
+            subject: [
+              ...new Set(
+                teacher.teachingAssignments
+                  .map((row) => row.subject?.name)
+                  .filter((name): name is string => Boolean(name)),
+              ),
+            ].join(", "),
             phone: "",
             qualification: "",
             designation: "",
             joinedOn: teacher.createdAt.toISOString(),
-            subjectIds: [],
-            classIds: [],
+            subjectIds: [
+              ...new Set(teacher.teachingAssignments.map((row) => row.subjectId)),
+            ],
+            classIds: [
+              ...new Set(teacher.teachingAssignments.map((row) => row.sectionId)),
+            ],
           }
         : null,
     });
