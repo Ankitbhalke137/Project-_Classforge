@@ -47,10 +47,12 @@ export default function TeachersPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const raw = data as (Paginated<Teacher> | Teacher[] | null);
-  const teachers: Teacher[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
-  const total: number = Array.isArray(raw) ? raw.length : (raw?.total ?? teachers.length);
-  const pageSize: number = Array.isArray(raw) ? 10 : (raw?.pageSize ?? 10);
+  // The endpoint is always paginated now; the Array branch only guards a
+  // malformed response.
+  const result = data as Paginated<Teacher> | null;
+  const teachers: Teacher[] = result?.data ?? [];
+  const total: number = result?.total ?? teachers.length;
+  const pageSize: number = result?.pageSize ?? result?.limit ?? 10;
 
   function afterChange(message: string) {
     setNotice(message);

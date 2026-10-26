@@ -107,14 +107,20 @@ export async function listExams(
   tenantId: string,
   filters: {
     page?: number;
+    limit?: number;
+    pageSize?: number;
     search?: string;
     status?: string;
     classId?: string;
     term?: string;
   },
 ) {
-  const page = Math.max(filters.page ?? 1, 1);
-  const pageSize = 10;
+  const page = Math.max(Number(filters.page ?? 1) || 1, 1);
+  const limit = Math.min(
+    Math.max(Number(filters.limit ?? filters.pageSize ?? 10) || 10, 1),
+    100,
+  );
+  const pageSize = limit;
   const search = filters.search?.trim();
 
   const where = {
@@ -141,12 +147,27 @@ export async function listExams(
       where,
       include: examInclude,
       orderBy: { examDate: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      skip: (page - 1) * limit,
+      take: limit,
     }),
   ]);
 
-  return { data: exams.map(formatExam), total, page, pageSize };
+  const totalPages = Math.max(Math.ceil(total / limit), 1);
+
+  return {
+    data: exams.map(formatExam),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+    },
+    total,
+    page,
+    pageSize,
+    limit,
+    totalPages,
+  };
 }
 
 export async function createExam(tenantId: string, raw: unknown) {

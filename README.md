@@ -36,6 +36,14 @@ environment variables so no credential is written into this repository:
 at any time, and `npm run user:clear-data` removes the demo rows so a fresh set
 of real users can be set up through the console.
 
+### Demo data
+
+| Script | Purpose |
+| --- | --- |
+| `npm run db:seed-demo` | seed a school with demo students |
+| `npm run db:assign-teachers` | attach those students to teachers |
+| `npm run db:assign-noida` | assign the Noida school's teacher |
+
 ## Environment
 
 | Variable | Meaning |
@@ -48,6 +56,9 @@ of real users can be set up through the console.
 | `SMTP_USER` `SMTP_PASS` | the sending account and its password |
 | `SMTP_FROM` `SMTP_FROM_NAME` | the From line on outgoing mail |
 | `PLATFORM_TENANT_LIMIT` | seats on the current plan, default 25 |
+| `SUPER_ADMIN_EMAIL` | initial Super Admin login email for `npm run db:seed` |
+| `SUPER_ADMIN_PASSWORD` | initial Super Admin password for `npm run db:seed` |
+| `SUPER_ADMIN_NAME` | initial Super Admin display name for `npm run db:seed` |
 
 ## Scripts
 
@@ -63,6 +74,7 @@ of real users can be set up through the console.
 | `npm run user:clear-data` | wipe the demo rows (`--yes` to confirm) |
 | `npm run smtp:test <email>` | check the SMTP connection and send a test email |
 | `npm run test:platform` | end-to-end check of every Super Admin endpoint |
+| `npm run test:p1` | end-to-end check of the P1 authorization and pagination rules |
 
 ## Emails
 
@@ -138,6 +150,9 @@ than stored.
 ## Super Admin endpoints
 
 ```
+POST   /api/auth/login
+GET    /api/auth/me
+
 GET    /api/platform/schools
 POST   /api/platform/schools
 PATCH  /api/platform/schools/:schoolId      name, slug, status
@@ -157,24 +172,32 @@ one that still has people in it is refused unless `?force=true` is passed.
 ## School endpoints
 
 ```
-GET    /api/t/:slug/students               ?page search classId status
+POST   /api/t/:slug/invite              (Supports SCHOOL_ADMIN, TEACHER, and STUDENT roles)
+GET    /api/t/:slug/students            ?page limit search classId sectionId status sort
 GET    /api/t/:slug/students/:id
-GET    /api/t/:slug/students/:id/attendance ?days
-GET    /api/t/:slug/teachers                ?search
-GET    /api/t/:slug/parents                 ?page search
+GET    /api/t/:slug/students/:id/attendance   ?days
+GET    /api/t/:slug/students/:id/report-card  ?term
+POST   /api/t/:slug/students/:id/resend-credentials
+GET    /api/t/:slug/teachers            ?page limit search sort
+GET    /api/t/:slug/parents             ?page search
+GET    /api/t/:slug/parents/:id/children
 GET    /api/t/:slug/subjects
-GET    /api/t/:slug/classes                 ?grade search
-GET    /api/t/:slug/attendance              ?date classId
-GET    /api/t/:slug/attendance/register     ?classId date
-GET    /api/t/:slug/attendance/trend        ?days
-GET    /api/t/:slug/exams                   ?page search term status classId
-GET    /api/t/:slug/announcements            ?page search priority audience
-POST   /api/t/:slug/announcements
-GET    /api/t/:slug/fees                    ?page search status classId term
+GET    /api/t/:slug/classes             ?grade search
+GET    /api/t/:slug/classes/:id/timetable
+GET    /api/t/:slug/attendance          ?date classId
+GET    /api/t/:slug/attendance/register ?classId date
+POST   /api/t/:slug/attendance
+GET    /api/t/:slug/attendance/trend    ?days
+GET    /api/t/:slug/exams               ?page limit search term status classId
+GET    /api/t/:slug/exams/:id/results
+POST   /api/t/:slug/exams/:id/publish
+GET    /api/t/:slug/report-cards        ?classId term
+GET    /api/t/:slug/announcements       ?page limit search priority audience sectionId
+POST   /api/t/:slug/announcements       (Section-scoped announcements with sectionId)
+GET    /api/t/:slug/fees                ?page search status classId term
 GET    /api/t/:slug/fees/summary
 GET    /api/t/:slug/dashboard
 GET    /api/t/:slug/calendar                the academic year, terms and timetable
-POST   /api/t/:slug/invite                  invites a teacher or student, by email
 GET    /api/t/:slug/notification-preferences
 PUT    /api/t/:slug/notification-preferences
 ```

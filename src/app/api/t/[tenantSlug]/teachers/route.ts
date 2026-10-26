@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 import { sendCredentialsEmail, appUrl } from "@/lib/mail";
 import {
   createTeacher,
-  formatTeacher,
   listTeachers,
-  teacherInclude,
 } from "@/lib/services/teacher-service";
 
 /**
- * GET /api/t/:tenantSlug/teachers
+ * GET /api/t/:tenantSlug/teachers?page=&limit=&search=&sort=&status=
  *
- * The staff roster. Supports search, sort, and pagination.
+ * The staff roster with server-side pagination, search, and sorting.
  */
 export async function GET(
   request: NextRequest,
@@ -26,42 +23,16 @@ export async function GET(
       "TEACHER",
     ]);
 
-    const searchParams = request.nextUrl.searchParams;
-    const hasPagination =
-      searchParams.has("page") || searchParams.has("pageSize") || searchParams.has("limit");
-    const query = {
-      page: searchParams.get("page") ? Number(searchParams.get("page")) : undefined,
-      limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
-      pageSize: searchParams.get("pageSize") ? Number(searchParams.get("pageSize")) : undefined,
-      search: searchParams.get("search") ?? undefined,
-      sort: searchParams.get("sort") ?? undefined,
-      status: (searchParams.get("status") as "ACTIVE" | "INACTIVE" | "ALL") ?? undefined,
-    };
-
-    if (hasPagination) {
-      const result = await listTeachers(tenant.id, query);
-      return NextResponse.json(result);
-    }
-
-    const teachers = await prisma.teacher.findMany({
-      where: {
-        tenantId: tenant.id,
-        ...(query.search
-          ? {
-              OR: [
-                { firstName: { contains: query.search, mode: "insensitive" } },
-                { lastName: { contains: query.search, mode: "insensitive" } },
-                { employeeNo: { contains: query.search, mode: "insensitive" } },
-                { user: { email: { contains: query.search, mode: "insensitive" } } },
-              ],
-            }
-          : {}),
-      },
-      include: teacherInclude(tenant.id),
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    const params = request.nextUrl.searchParams;
+    const result = await listTeachers(tenant.id, {
+      page: Number(params.get("page") ?? 1) || 1,
+      limit: Number(params.get("limit") ?? params.get("pageSize")) || undefined,
+      search: params.get("search") ?? undefined,
+      sort: params.get("sort") ?? undefined,
+      status: (params.get("status") as "ACTIVE" | "INACTIVE" | "ALL") ?? undefined,
     });
 
-    return NextResponse.json(teachers.map(formatTeacher));
+    return NextResponse.json(result);
   } catch (error) {
     return handleApiError(error);
   }

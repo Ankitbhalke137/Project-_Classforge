@@ -332,21 +332,36 @@ export async function deactivateTeacher(tenantId: string, teacherId: string) {
   return { deactivated: true, status: "INACTIVE" as const };
 }
 
-export interface TeacherListQuery {
-  page?: number;
-  limit?: number;
-  pageSize?: number;
-  search?: string;
-  sort?: string;
-  status?: "ACTIVE" | "INACTIVE" | "ALL";
-}
+/* ------------------------------------------------------------------ *
+ * Teacher Listing with Pagination, Search and Sorting
+ * ------------------------------------------------------------------ */
 
-/** Lists teachers with pagination, search, and sorting. */
-export async function listTeachers(tenantId: string, query: TeacherListQuery = {}) {
-  const where: Prisma.TeacherWhereInput = { tenantId };
+export const teacherListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  pageSize: z.coerce.number().int().positive().max(100).optional(),
+  search: z.string().trim().optional(),
+  sort: z.string().optional(),
+  status: z.enum(["ACTIVE", "INACTIVE", "ALL"]).optional(),
+});
 
-  const s = query.search?.trim();
-  if (s) {
+export type TeacherListQuery = z.input<typeof teacherListQuerySchema>;
+
+/**
+ * Lists teachers with server-side pagination, search, and sorting.
+ */
+export async function listTeachers(tenantId: string, rawQuery: TeacherListQuery) {
+  const query = teacherListQuerySchema.parse(rawQuery);
+  const page = query.page;
+  const limit = query.limit ?? query.pageSize ?? 20;
+  const skip = (page - 1) * limit;
+
+  const where: Prisma.TeacherWhereInput = {
+    tenantId,
+  };
+
+  if (query.search) {
+    const s = query.search.trim();
     where.OR = [
       { firstName: { contains: s, mode: "insensitive" } },
       { lastName: { contains: s, mode: "insensitive" } },
@@ -354,13 +369,18 @@ export async function listTeachers(tenantId: string, query: TeacherListQuery = {
       { phone: { contains: s, mode: "insensitive" } },
       { qualification: { contains: s, mode: "insensitive" } },
       { designation: { contains: s, mode: "insensitive" } },
-      { user: { email: { contains: s, mode: "insensitive" } } },
+      {
+        user: {
+          OR: [
+            { email: { contains: s, mode: "insensitive" } },
+            { name: { contains: s, mode: "insensitive" } },
+          ],
+        },
+      },
       {
         teachingAssignments: {
           some: {
-            subject: {
-              name: { contains: s, mode: "insensitive" },
-            },
+            subject: { name: { contains: s, mode: "insensitive" } },
           },
         },
       },
@@ -369,29 +389,29 @@ export async function listTeachers(tenantId: string, query: TeacherListQuery = {
 
   if (query.status && query.status !== "ALL") {
     where.user = {
-      is: {
-        memberships: {
-          some: {
-            tenantId,
-            role: MembershipRole.TEACHER,
-            status: query.status === "ACTIVE" ? MembershipStatus.ACTIVE : MembershipStatus.INACTIVE,
-          },
+      memberships: {
+        some: {
+          tenantId,
+          role: MembershipRole.TEACHER,
+          status: query.status === "ACTIVE" ? MembershipStatus.ACTIVE : MembershipStatus.INACTIVE,
         },
       },
     };
   }
 
-  let orderBy: Prisma.TeacherOrderByWithRelationInput[] = [
-    { lastName: "asc" },
-    { firstName: "asc" },
-  ];
-
+  let orderBy: Prisma.TeacherOrderByWithRelationInput[] = [{ lastName: "asc" }, { firstName: "asc" }];
   if (query.sort) {
     const [field, direction] = query.sort.split(":");
-    const dir = direction?.toLowerCase() === "desc" ? ("desc" as const) : ("asc" as const);
+    const dir = direction?.toLowerCase() === "desc" ? "desc" : "asc";
     switch (field) {
       case "name":
         orderBy = [{ firstName: dir }, { lastName: dir }];
+        break;
+      case "firstName":
+        orderBy = [{ firstName: dir }];
+        break;
+      case "lastName":
+        orderBy = [{ lastName: dir }];
         break;
       case "employeeNo":
         orderBy = [{ employeeNo: dir }];
@@ -404,25 +424,32 @@ export async function listTeachers(tenantId: string, query: TeacherListQuery = {
     }
   }
 
-  const page = Math.max(1, Number(query.page) || 1);
-  const pageSize = Math.max(1, Number(query.pageSize || query.limit) || 10);
-  const skip = (page - 1) * pageSize;
-
   const [total, teachers] = await Promise.all([
     prisma.teacher.count({ where }),
     prisma.teacher.findMany({
       where,
-      include: teacherInclude(tenantId),
-      orderBy,
       skip,
-      take: pageSize,
+      take: limit,
+      orderBy,
+      include: teacherInclude(tenantId),
     }),
   ]);
 
+  const totalPages = Math.max(Math.ceil(total / limit), 1);
+  const data = teachers.map(formatTeacher);
+
   return {
-    data: teachers.map(formatTeacher),
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+    },
     total,
     page,
-    pageSize,
+    pageSize: limit,
+    limit,
+    totalPages,
   };
 }

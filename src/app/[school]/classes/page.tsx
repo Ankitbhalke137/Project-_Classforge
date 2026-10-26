@@ -59,6 +59,14 @@ function StaffClasses() {
   const teachers = useApi(() => schoolApi.listTeachers(schoolSlug), [schoolSlug]);
   const years = useApi(() => schoolApi.listAcademicYears(schoolSlug), [schoolSlug]);
 
+  // listTeachers is paginated, so the rows arrive under `data`. Older callers
+  // still expect a bare array, hence the Array check.
+  const teacherList = useMemo(() => {
+    const raw = teachers.data;
+    if (Array.isArray(raw)) return raw;
+    return (raw as unknown as { data: Teacher[] })?.data ?? [];
+  }, [teachers.data]);
+
   const rows = classes.data ?? [];
   const grades = useMemo(
     () => [...new Set((allClasses.data ?? []).map((row) => row.grade))].sort(),
@@ -123,7 +131,7 @@ function StaffClasses() {
           />
           <StatCard
             label="Teachers"
-            value={teachers.data ? formatNumber(teachers.data.length) : "—"}
+            value={teacherList.length ? formatNumber(teacherList.length) : "—"}
             hint="On staff"
           />
         </div>
@@ -212,7 +220,7 @@ function StaffClasses() {
         schoolSlug={schoolSlug}
         schoolClass={null}
         years={years.data ?? []}
-        teachers={teachers.data ?? []}
+        teachers={teacherList}
         onClose={() => setCreateOpen(false)}
         onSaved={(message) => {
           setCreateOpen(false);
@@ -231,7 +239,7 @@ function StaffClasses() {
             (subject) => subject.classId === (detailFor.classId ?? detailFor.id),
           )}
           allSubjects={subjects.data ?? []}
-          teachers={teachers.data ?? []}
+          teachers={teacherList}
           canManage={canManage}
           onClose={() => setDetailFor(null)}
           onChanged={(message) => {

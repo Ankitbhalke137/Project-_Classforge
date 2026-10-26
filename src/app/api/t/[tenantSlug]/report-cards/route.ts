@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantContext } from "@/lib/tenant-context";
-import { BadRequestError, handleApiError } from "@/lib/errors";
+import { BadRequestError, ForbiddenError, NotFoundError, handleApiError } from "@/lib/errors";
 import { getClassReportCards } from "@/lib/services/report-card-service";
+import { getTeacherAssignedSectionIds } from "@/lib/services/student-service";
+import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/t/:tenantSlug/report-cards?classId=…&term=…
@@ -15,7 +17,7 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const { tenant } = await resolveTenantContext(request, tenantSlug, [
+    const { tenant, membership } = await resolveTenantContext(request, tenantSlug, [
       "SCHOOL_ADMIN",
       "TEACHER",
     ]);
@@ -25,6 +27,35 @@ export async function GET(
 
     if (!classId) {
       throw new BadRequestError("Choose a class.", { classId: "Class is required" });
+    }
+
+    if (membership.role === "TEACHER") {
+      const assignedSectionIds = await getTeacherAssignedSectionIds(
+        prisma,
+        tenant.id,
+        membership.userId,
+      );
+
+      const section = await prisma.section.findFirst({
+        where: { id: classId, tenantId: tenant.id },
+        select: { id: true },
+      });
+
+      let isAssigned = false;
+      if (section) {
+        isAssigned = assignedSectionIds.includes(section.id);
+      } else {
+        const schoolClass = await prisma.schoolClass.findFirst({
+          where: { id: classId, tenantId: tenant.id },
+          select: { sections: { select: { id: true } } },
+        });
+        if (!schoolClass) throw new NotFoundError("Class not found.");
+        isAssigned = schoolClass.sections.some((s) => assignedSectionIds.includes(s.id));
+      }
+
+      if (!isAssigned) {
+        throw new ForbiddenError("You can only view report cards for classes assigned to you.");
+      }
     }
 
     return NextResponse.json(await getClassReportCards(tenant.id, classId, term));

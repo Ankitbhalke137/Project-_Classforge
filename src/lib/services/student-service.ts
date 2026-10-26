@@ -85,6 +85,39 @@ export interface UserContext {
   role: MembershipRole;
 }
 
+/**
+ * Helper to fetch section IDs assigned to a teacher through:
+ * 1. Direct teaching assignments (`teachingAssignment`)
+ * 2. Homeroom teacher assignment on parent classes (`schoolClass.homeroomTeacherId`)
+ */
+export async function getTeacherAssignedSectionIds(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  userId: string,
+): Promise<string[]> {
+  const teacher = await tx.teacher.findFirst({
+    where: { tenantId, userId },
+    select: { id: true },
+  });
+  if (!teacher) return [];
+
+  const [assignments, homeroomClasses] = await Promise.all([
+    tx.teachingAssignment.findMany({
+      where: { tenantId, teacherId: teacher.id },
+      select: { sectionId: true },
+    }),
+    tx.schoolClass.findMany({
+      where: { tenantId, homeroomTeacherId: teacher.id },
+      select: { sections: { select: { id: true } } },
+    }),
+  ]);
+
+  const sectionIds = new Set<string>();
+  assignments.forEach((a) => sectionIds.add(a.sectionId));
+  homeroomClasses.forEach((c) => c.sections.forEach((s) => sectionIds.add(s.id)));
+  return Array.from(sectionIds);
+}
+
 /* ------------------------------------------------------------------ *
  * Helper: format student record for responses
  * ------------------------------------------------------------------ */
@@ -271,10 +304,69 @@ export async function listStudents(
 
   // Centralized query context execution
   return withTenant(tenantId, async (tx) => {
+    const scopedWhere: Prisma.StudentWhereInput = { ...where };
+
+    // Role checks: Teachers can only view students in sections assigned to them (P1.5)
+    if (userContext.role === "TEACHER") {
+      const assignedSectionIds = await getTeacherAssignedSectionIds(
+        tx,
+        tenantId,
+        userContext.userId,
+      );
+      if (assignedSectionIds.length === 0) {
+        return {
+          data: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 1,
+          },
+          total: 0,
+          page,
+          pageSize: limit,
+        };
+      }
+
+      if (query.sectionId && !assignedSectionIds.includes(query.sectionId)) {
+        return {
+          data: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 1,
+          },
+          total: 0,
+          page,
+          pageSize: limit,
+        };
+      }
+
+      const allowedSectionIds = query.sectionId
+        ? [query.sectionId]
+        : assignedSectionIds;
+
+      scopedWhere.AND = [
+        ...(Array.isArray(scopedWhere.AND)
+          ? scopedWhere.AND
+          : scopedWhere.AND
+            ? [scopedWhere.AND]
+            : []),
+        {
+          enrolments: {
+            some: {
+              sectionId: { in: allowedSectionIds },
+            },
+          },
+        },
+      ];
+    }
+
     const [total, students] = await Promise.all([
-      tx.student.count({ where }),
+      tx.student.count({ where: scopedWhere }),
       tx.student.findMany({
-        where,
+        where: scopedWhere,
         skip,
         take: limit,
         orderBy,
@@ -376,6 +468,23 @@ export async function getStudentById(
     // Ownership check: Student role can only view their own record (PRD Page 4)
     if (userContext.role === "STUDENT" && student.userId !== userContext.userId) {
       throw new ForbiddenError("You may only view your own student record.");
+    }
+
+    // Role check: Teacher can only view students in sections assigned to them (P1.5)
+    if (userContext.role === "TEACHER") {
+      const assignedSectionIds = await getTeacherAssignedSectionIds(
+        tx,
+        tenantId,
+        userContext.userId,
+      );
+      const isEnrolledInAssignedSection = student.enrolments.some((e) =>
+        assignedSectionIds.includes(e.section.id),
+      );
+      if (!isEnrolledInAssignedSection) {
+        throw new ForbiddenError(
+          "You can only view students in classes assigned to you.",
+        );
+      }
     }
 
     // Compute attendance summary
@@ -1020,33 +1129,16 @@ export async function resendStudentCredentials(
     }
 
     if (userContext.role === "TEACHER") {
-      const teacher = await tx.teacher.findFirst({
-        where: { tenantId, userId: userContext.userId },
-        select: { id: true },
-      });
-      if (!teacher) {
-        throw new ForbiddenError("Your account is not linked to a teacher profile in this school.");
-      }
+      const assignedSectionIds = await getTeacherAssignedSectionIds(
+        tx,
+        tenantId,
+        userContext.userId,
+      );
+      const isEnrolled = student.enrolments.some((row) =>
+        assignedSectionIds.includes(row.sectionId),
+      );
 
-      const sectionIds = student.enrolments.map((row) => row.sectionId);
-      const teaches = sectionIds.length
-        ? await tx.teachingAssignment.findFirst({
-            where: { tenantId, teacherId: teacher.id, sectionId: { in: sectionIds } },
-            select: { id: true },
-          })
-        : null;
-      const homeroom = teaches
-        ? null
-        : await tx.schoolClass.findFirst({
-            where: {
-              tenantId,
-              homeroomTeacherId: teacher.id,
-              sections: { some: { id: { in: sectionIds } } },
-            },
-            select: { id: true },
-          });
-
-      if (!teaches && !homeroom) {
+      if (!isEnrolled) {
         throw new ForbiddenError("You can only resend credentials for a student in your own class.");
       }
     }

@@ -19,7 +19,8 @@
     "smtp:test": "tsx scripts/test-smtp.ts",
     "user:super-admin": "tsx scripts/create-super-admin.ts",
     "user:clear-data": "tsx scripts/clear-platform-data.ts",
-    "test:platform": "tsx scripts/test-platform-crud.ts"
+    "test:platform": "tsx scripts/test-platform-crud.ts",
+    "test:p1": "tsx scripts/test-p1-implementation.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

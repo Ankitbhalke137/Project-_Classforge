@@ -17,9 +17,11 @@ export async function GET(
     ]);
 
     const params = request.nextUrl.searchParams;
+    const limit = Number(params.get("limit") ?? params.get("pageSize")) || undefined;
     return NextResponse.json(
       await listExams(tenant.id, {
         page: Number(params.get("page") ?? 1) || 1,
+        limit,
         search: params.get("search") ?? undefined,
         status: params.get("status") ?? undefined,
         classId: params.get("classId") ?? undefined,

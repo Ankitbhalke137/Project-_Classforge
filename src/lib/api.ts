@@ -116,6 +116,13 @@ export const authApi = {
       method: "POST",
       body: { email, password },
     }),
+  /**
+   * Revalidates the session cookie against the server.
+   *
+   * The signed-in account's user record and school memberships come back fresh,
+   * so a role revoked in another tab is picked up without re-login.
+   */
+  me: () => api<{ user: User; schools: Membership[] }>("/api/auth/me"),
 
   /**
    * Changes the signed-in account's own password.
@@ -291,17 +298,9 @@ export const schoolApi = {
       }>;
     }>(`/api/t/${schoolSlug}/classes`),
 
-  listTeachers: (
-    schoolSlug: string,
-    params: {
-      page?: number;
-      limit?: number;
-      pageSize?: number;
-      search?: string;
-      sort?: string;
-      status?: string;
-    } = {},
-  ) => api<Teacher[] & Paginated<Teacher>>(withQuery(`/api/t/${schoolSlug}/teachers`, params)),
+  /** Always paginated — the rows arrive under `data` with a `pagination` block. */
+  listTeachers: (schoolSlug: string, params: ListParams = {}) =>
+    api<Paginated<Teacher>>(withQuery(`/api/t/${schoolSlug}/teachers`, params)),
 
   /** Creates the staff profile, the login and the membership in one call. */
   createTeacher: (
@@ -343,6 +342,7 @@ export const schoolApi = {
       `/api/t/${schoolSlug}/teachers/${id}`,
       { method: "DELETE" },
     ),
+
 
   listParents: (schoolSlug: string, params: ListParams = {}) =>
     api<Paginated<Parent>>(withQuery(`/api/t/${schoolSlug}/parents`, params)),

@@ -640,4 +640,12 @@ export interface Paginated<T> {
   total: number;
   page: number;
   pageSize: number;
+  limit?: number;
+  totalPages?: number;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
