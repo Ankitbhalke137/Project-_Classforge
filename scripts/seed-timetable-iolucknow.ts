@@ -49,7 +49,9 @@ async function main() {
       where: { tenantId: tenant.id },
       select: { id: true, userId: true },
     });
-    const userIds = classTeachers.map((t) => t.userId).filter(Boolean);
+    const userIds = classTeachers
+      .map((t) => t.userId)
+      .filter((id): id is string => Boolean(id));
     await prisma.membership.deleteMany({
       where: { tenantId: tenant.id, userId: { in: userIds } },
     });
@@ -140,17 +142,18 @@ async function main() {
     if (!s) throw new Error(`Unknown subject: ${subject}`);
     const t = teachers.map((name) => byTeacher.get(name)).filter(Boolean);
     if (t.length === 0) throw new Error(`No teacher for ${subject}`);
+    const teacherId = t[0]!.id;
     return {
       tenantId: tenant.id,
       sectionId: realSection.id,
       subjectId: s.id,
-      teacherId: t[0].id,
+      teacherId,
       day,
       period,
     };
   };
 
-  const slots: typeof slot[] = [
+  const slots: ReturnType<typeof slot>[] = [
     /* Monday */
     slot("MONDAY", 1, "Operating System", "Ram"),
     slot("MONDAY", 2, "Python for Data Science", "Rohit"),
