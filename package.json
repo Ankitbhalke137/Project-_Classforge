@@ -21,7 +21,11 @@
     "test:p1": "tsx scripts/test-p1-implementation.ts",
     "db:assign-teachers": "tsx scripts/assign-students-to-teachers.ts",
     "db:seed-demo": "tsx scripts/seed-demo-students.ts",
-    "db:assign-noida": "tsx scripts/assign-noida-teacher.ts"
+    "db:assign-noida": "tsx scripts/assign-noida-teacher.ts",
+    "test:rate-limit": "tsx scripts/test-rate-limit.ts",
+    "test:csrf": "tsx scripts/test-csrf.ts",
+    "test:rls": "tsx scripts/verify-rls-security.ts",
+    "test:security": "tsx scripts/test-rate-limit.ts && tsx scripts/test-csrf.ts && tsx scripts/verify-rls-security.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
