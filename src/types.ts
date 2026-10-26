@@ -22,6 +22,8 @@ export interface User {
   email: string;
   /** True for the platform admin, who sits outside every school. */
   isSuperAdmin: boolean;
+  /** True when the account was issued a temporary password and must set a new one before using the app. */
+  mustChangePassword: boolean;
 }
 
 /** The role one account holds inside one school. */
