@@ -335,6 +335,7 @@ export const schoolApi = {
     body: {
       firstName?: string;
       lastName?: string;
+      email?: string;
       employeeNo?: string | null;
       phone?: string | null;
       qualification?: string | null;

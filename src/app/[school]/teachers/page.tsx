@@ -408,6 +408,7 @@ function TeacherFormModal({
     const profile = {
       firstName: form.firstName.trim(),
       lastName: form.lastName.trim(),
+      ...(form.email.trim() ? { email: form.email.trim() } : {}),
       employeeNo: form.employeeNo.trim() || null,
       phone: form.phone.trim() || null,
       qualification: form.qualification.trim() || null,
