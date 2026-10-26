@@ -11,6 +11,11 @@ type Field = "currentPassword" | "newPassword" | "confirmPassword";
 
 const EMPTY = { currentPassword: "", newPassword: "", confirmPassword: "" };
 
+interface ChangePasswordFormProps {
+  /** Fired after the password is successfully changed. */
+  onSuccess?: () => void;
+}
+
 /**
  * The "change your password" form.
  *
@@ -19,7 +24,7 @@ const EMPTY = { currentPassword: "", newPassword: "", confirmPassword: "" };
  * account's own `users.password_hash` row. The server requires the current
  * password, so a stolen session cannot be used to take the account over.
  */
-export function ChangePasswordForm() {
+export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps = {}) {
   const [passwords, setPasswords] = useState(EMPTY);
   const [visible, setVisible] = useState<Record<Field, boolean>>({
     currentPassword: false,
@@ -74,6 +79,7 @@ export function ChangePasswordForm() {
       setPasswords(EMPTY);
       setErrors({});
       setMessage({ type: "success", text: result.message });
+      onSuccess?.();
     } catch (error) {
       if (error instanceof ApiError) {
         // The server can reject one field — usually the current password.

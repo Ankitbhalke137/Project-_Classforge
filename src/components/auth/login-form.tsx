@@ -12,6 +12,7 @@ import { AlertIcon, EyeIcon, EyeOffIcon, ShieldCheckIcon } from "@/components/ui
 import { ApiError } from "@/lib/api";
 import { landingPath } from "@/lib/nav";
 import { useAuth } from "@/store/auth";
+import { ChangePasswordForm } from "@/components/settings/change-password-form";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -32,6 +33,7 @@ export function LoginForm() {
   const [formHint, setFormHint] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
   /** The same checks the server makes, run early so the fields can speak first. */
   function validate(): FieldErrors {
@@ -66,6 +68,14 @@ export function LoginForm() {
       await login(email.trim(), password);
 
       const { user, schools } = useAuth.getState();
+      if (!user) return;
+
+      // First-time login: force a password change before reaching any screen.
+      if (user.mustChangePassword) {
+        setShowChangePasswordModal(true);
+        return;
+      }
+
       router.replace(landingPath(user, schools));
     } catch (err) {
       const rejected = err instanceof ApiError && err.status === 401;
@@ -82,6 +92,12 @@ export function LoginForm() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handlePasswordChanged() {
+    setShowChangePasswordModal(false);
+    const { user, schools } = useAuth.getState();
+    router.replace(landingPath(user, schools));
   }
 
   return (
@@ -295,6 +311,17 @@ export function LoginForm() {
                 )}
               </div>
             </Modal>
+
+            {showChangePasswordModal && (
+              <Modal
+                open
+                onClose={() => {}}
+                title="Change your password"
+                description="This is your first sign in. Set a new password before you can use ClassForge."
+              >
+                <ChangePasswordForm onSuccess={handlePasswordChanged} />
+              </Modal>
+            )}
 
             <p className="mt-8 text-center text-xs text-body">
               © {new Date().getFullYear()} ClassForge. All rights reserved.
