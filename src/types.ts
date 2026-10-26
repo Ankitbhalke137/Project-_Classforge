@@ -174,6 +174,8 @@ export interface Teacher {
   subjectIds: string[];
   /** Classes this teacher teaches or is homeroom of. */
   classIds: string[];
+  /** Section + subject pairs this teacher is assigned to. */
+  classAssignments: { sectionId: string; subjectId: string }[];
   /** Membership state in this school. A deactivated teacher keeps their row. */
   status: "ACTIVE" | "INACTIVE";
   userId?: string | null;
