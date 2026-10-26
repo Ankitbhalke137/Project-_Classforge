@@ -122,6 +122,12 @@ export const authApi = {
    * The signed-in account's user record and school memberships come back fresh,
    * so a role revoked in another tab is picked up without re-login.
    */
+  /**
+   * The signed-in account's profile and the schools it can switch between.
+   *
+   * Revalidates the httpOnly session cookie, so a role revoked in another tab
+   * is picked up without re-login.
+   */
   me: () => api<{ user: User; schools: Membership[] }>("/api/auth/me"),
 
   /**
@@ -640,7 +646,10 @@ export const schoolApi = {
   ) => api<Paginated<Announcement>>(withQuery(`/api/t/${schoolSlug}/announcements`, params)),
   createAnnouncement: (
     schoolSlug: string,
-    body: Pick<Announcement, "title" | "body" | "audience" | "priority"> & { pinned?: boolean },
+    body: Pick<Announcement, "title" | "body" | "audience" | "priority"> & {
+      pinned?: boolean;
+      sectionId?: string | null;
+    },
   ) => api<Announcement>(`/api/t/${schoolSlug}/announcements`, { method: "POST", body }),
 
   /* --- Invites --- */

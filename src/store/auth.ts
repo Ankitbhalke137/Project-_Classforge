@@ -10,7 +10,7 @@ const STORAGE_KEY = "classforge.session";
 interface AuthState {
   user: User | null;
   schools: Membership[];
-  /** False until sessionStorage has been read. Guards wait for this. */
+  /** False until sessionStorage has been read and /api/auth/me has validated the session. */
   ready: boolean;
 
   restore: () => void;
@@ -24,12 +24,35 @@ export const useAuth = create<AuthState>((set) => ({
   ready: false,
 
   // Called once on app start, before any guard makes a decision.
-  restore: () => {
+  // Reads the client copy for an instant paint, then validates the httpOnly
+  // session cookie against /api/auth/me when there is saved session data to
+  // validate. Avoids calling /api/auth/me on a cold load with no session,
+  // which would return 401 and pollute the browser console.
+  restore: async () => {
     const saved = sessionStorage.getItem(STORAGE_KEY);
     if (saved) {
-      const { user, schools } = JSON.parse(saved);
-      set({ user, schools });
+      try {
+        const { user, schools } = JSON.parse(saved);
+        set({ user, schools });
+      } catch {
+        // Malformed storage is ignored.
+      }
+
+      // Validate the saved session against the server. If the cookie is gone
+      // or expired, clear the stale client copy.
+      try {
+        const { user: meUser, schools: meSchools } = await authApi.me();
+        set({ user: meUser, schools: meSchools });
+        sessionStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ user: meUser, schools: meSchools }),
+        );
+      } catch {
+        sessionStorage.removeItem(STORAGE_KEY);
+        set({ user: null, schools: [] });
+      }
     }
+
     set({ ready: true });
   },
 

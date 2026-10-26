@@ -208,3 +208,28 @@ PUT    /api/t/:slug/notification-preferences
 server: sign-in, the full CRUD on schools and on staff memberships, the
 authorisation rules, and the cleanup. It creates what it needs and removes it
 again, so the database is left as it was found.
+
+## P1 frontend integration (draft)
+
+The frontend P1 work sits in a **draft PR** and is **blocked on the backend P1
+routes being merged into `develop`**. Against `develop` as it stands today the
+following endpoints do not exist, so the screens below will 404 until the
+backend P1 branch (`origin/backend`) is merged:
+
+- `GET /api/auth/me` — current user profile + accessible schools (used by the
+  auth/session restore flow in `src/store/auth.ts`)
+- `GET /api/t/:slug/teachers?page&pageSize&search&sort&status` — paginated
+  teachers roster (`src/app/[school]/teachers/page.tsx`)
+- `GET /api/t/:slug/announcements?page&limit&search&priority&audience&sectionId`
+  — paginated announcements; `POST` accepts optional `sectionId`; teachers are
+  barred from school-wide notices (403)
+  (`src/app/[school]/announcements/page.tsx`)
+- `GET /api/t/:slug/exams?page&limit&search&status&classId&term` — paginated
+  exams (`src/app/[school]/exams/page.tsx`)
+
+Once those routes land on `develop`, the draft PR can be merged and the P1
+frontend flows (auth/school selection, paginated Teachers & Exams, section-scoped
+Announcements) will resolve end-to-end. A Student Invitation UI page does not
+exist yet in the frontend; the backend `/invite` route handles student creation
+with generated admission numbers and optional section assignment.
+

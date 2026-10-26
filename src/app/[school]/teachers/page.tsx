@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { RequireArea } from "@/components/auth/guards";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,9 @@ export default function TeachersPage() {
   const canManage = useCanPerform("manageRoster");
 
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
+  // A ?search= link deep-links straight into a filtered roster.
+  const urlSearch = useSearchParams().get("search") ?? "";
+  const [search, setSearch] = useState(urlSearch);
   const [sort, setSort] = useState<string>("name:asc");
   const query = useDebounced(search);
 
@@ -47,12 +50,10 @@ export default function TeachersPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // The endpoint is always paginated now; the Array branch only guards a
+  // The endpoint is always paginated now; the fallback only guards a
   // malformed response.
   const result = data as Paginated<Teacher> | null;
   const teachers: Teacher[] = result?.data ?? [];
-  const total: number = result?.total ?? teachers.length;
-  const pageSize: number = result?.pageSize ?? result?.limit ?? 10;
 
   function afterChange(message: string) {
     setNotice(message);
@@ -90,6 +91,8 @@ export default function TeachersPage() {
       setPendingId(null);
     }
   }
+
+  const filtersActive = Boolean(search);
 
   return (
     <RequireArea area="teachers">
@@ -139,6 +142,19 @@ export default function TeachersPage() {
                 options={SORT_OPTIONS}
               />
             </div>
+            {filtersActive ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setSearch("");
+                  setSort("name:asc");
+                  setPage(1);
+                }}
+              >
+                Clear filters
+              </Button>
+            ) : null}
           </div>
 
           {loading ? (
@@ -149,16 +165,20 @@ export default function TeachersPage() {
             </p>
           ) : teachers.length === 0 ? (
             <EmptyState
-              title={query ? "No teachers match this search" : "No teachers yet"}
+              title={filtersActive ? "No teachers match this search" : "No teachers yet"}
               description={
-                query
+                filtersActive
                   ? "Try a different name, email or employee number."
                   : "Add the first teacher to give them access to this school."
               }
               action={
-                query ? (
-                  <Button variant="secondary" onClick={() => setSearch("")}>
-                    Clear search
+                filtersActive ? (
+                  <Button variant="secondary" onClick={() => {
+                    setSearch("");
+                    setSort("name:asc");
+                    setPage(1);
+                  }}>
+                    Clear filters
                   </Button>
                 ) : canManage ? (
                   <Button onClick={() => setAddOpen(true)}>Add teacher</Button>
@@ -252,53 +272,45 @@ export default function TeachersPage() {
                   })}
                 </TBody>
               </Table>
-              <PaginationBar
-                result={{
-                  data: teachers,
-                  total,
-                  page,
-                  pageSize,
-                }}
-                onPageChange={setPage}
-              />
+              {result ? <PaginationBar result={result} onPageChange={setPage} /> : null}
             </>
           )}
         </Card>
+
+        <TeacherFormModal
+          key={addOpen ? "new" : editing?.id ?? "closed"}
+          open={addOpen || editing !== null}
+          schoolSlug={schoolSlug}
+          teacher={editing}
+          onClose={() => {
+            setAddOpen(false);
+            setEditing(null);
+          }}
+          onSaved={(teacher, created) => {
+            setAddOpen(false);
+            setEditing(null);
+            afterChange(
+              created
+                ? `${teacher.name} was added to the staff roster.`
+                : `${teacher.name} was updated.`,
+            );
+          }}
+        />
+
+        <ConfirmModal
+          open={deactivating !== null}
+          onClose={() => setDeactivating(null)}
+          onConfirm={() => (deactivating ? deactivate(deactivating) : undefined)}
+          title="Deactivate teacher"
+          message={
+            deactivating
+              ? `${deactivating.name} will no longer be able to sign in to this school. Their staff record, assignments and history are kept, and you can reactivate them later.`
+              : ""
+          }
+          confirmLabel="Deactivate"
+          isPending={deactivating !== null && pendingId === deactivating.id}
+        />
       </div>
-
-      <TeacherFormModal
-        key={addOpen ? "new" : editing?.id ?? "closed"}
-        open={addOpen || editing !== null}
-        schoolSlug={schoolSlug}
-        teacher={editing}
-        onClose={() => {
-          setAddOpen(false);
-          setEditing(null);
-        }}
-        onSaved={(teacher, created) => {
-          setAddOpen(false);
-          setEditing(null);
-          afterChange(
-            created
-              ? `${teacher.name} was added to the staff roster.`
-              : `${teacher.name} was updated.`,
-          );
-        }}
-      />
-
-      <ConfirmModal
-        open={deactivating !== null}
-        onClose={() => setDeactivating(null)}
-        onConfirm={() => (deactivating ? deactivate(deactivating) : undefined)}
-        title="Deactivate teacher"
-        message={
-          deactivating
-            ? `${deactivating.name} will no longer be able to sign in to this school. Their staff record, assignments and history are kept, and you can reactivate them later.`
-            : ""
-        }
-        confirmLabel="Deactivate"
-        isPending={deactivating !== null && pendingId === deactivating.id}
-      />
     </RequireArea>
   );
 }
@@ -364,9 +376,9 @@ function TeacherFormModal({
   const editing = teacher !== null;
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current: FormState) => ({ ...current, [key]: value }));
     if (errors[key]) {
-      setErrors((current) => {
+      setErrors((current: Record<string, string>) => {
         const next = { ...current };
         delete next[key];
         return next;

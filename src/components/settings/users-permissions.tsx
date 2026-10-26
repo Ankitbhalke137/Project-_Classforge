@@ -15,8 +15,8 @@ function TeachersOverview({ schoolSlug }: { schoolSlug: string }) {
   const teachers = useApi(() => schoolApi.listTeachers(schoolSlug), [schoolSlug]);
 
   if (teachers.loading) return <TableSkeleton rows={5} columns={5} />;
-  // listTeachers is paginated; the rows arrive under `data`.
-  const rows = (teachers.data as { data?: Teacher[] } | null)?.data ?? [];
+  // listTeachers is paginated, so the rows arrive under `data`.
+  const rows = teachers.data?.data ?? [];
   if (teachers.error) return <div className="text-xs text-danger-600">Failed to load teachers.</div>;
 
   return (
