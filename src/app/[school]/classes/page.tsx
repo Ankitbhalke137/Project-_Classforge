@@ -13,6 +13,13 @@ import { EmptyState, ErrorState, PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
 import { ApiError, schoolApi } from "@/lib/api";
 import {
+  compactErrors,
+  hasErrors,
+  integerError,
+  optionalTextError,
+  textError,
+} from "@/lib/validation";
+import {
   useApi,
   useCanPerform,
   useDebounced,
@@ -531,15 +538,26 @@ function ClassDetailsTab({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
 
-    const next: Record<string, string> = {};
-    if (!name.trim()) next.name = "Class name is required.";
-    if (capacity !== "" && (!Number.isFinite(Number(capacity)) || Number(capacity) < 0)) {
-      next.capacity = "Capacity cannot be negative.";
-    }
-    setFields(next);
-    if (Object.keys(next).length > 0) return;
+    // Why each field is validated before the call:
+    // - class name: timetables, enrolments and exams all key off this label,
+    //   so it must be present and not just whitespace.
+    // - room: optional; when filled it must fit in the database column.
+    // - capacity: a whole number 0-1000 - the room cannot hold negative or
+    //   millions of students, and this keeps the timetable math sane.
+    const next: Record<string, string | null> = {};
+    next.name = textError(name, "Class name", { min: 1, max: 50 });
+    next.room = optionalTextError(room || "", "Room", { min: 1, max: 50 });
+    next.capacity = integerError(capacity, {
+      label: "Capacity",
+      min: 0,
+      max: 1000,
+      required: false,
+    });
+    setFields(compactErrors(next));
+    if (hasErrors(next)) return;
 
     setBusy(true);
+
     try {
       await schoolApi.updateClass(schoolSlug, classId, {
         name,
@@ -633,17 +651,23 @@ function SectionsTab({
   const [editing, setEditing] = useState<SchoolClass | null>(null);
   const [editName, setEditName] = useState("");
   const [deleting, setDeleting] = useState<SchoolClass | null>(null);
+  const [sectionFields, setSectionFields] = useState<Record<string, string>>({});
 
   async function add(event: React.FormEvent) {
     event.preventDefault();
-    if (!name.trim()) {
-      onError("Enter a section name.");
-      return;
-    }
+
+    // Section names label attendance, timetable slots and enrolments, so they
+    // must be present and short enough to display in a narrow column.
+    const next: Record<string, string | null> = {};
+    next.name = textError(name, "Section name", { min: 1, max: 50 });
+    setSectionFields(compactErrors(next));
+    if (hasErrors(next)) return;
+
     setBusy(true);
     try {
       await schoolApi.addSection(schoolSlug, classId, name.trim());
       setName("");
+      setSectionFields({});
       onChanged("Section added.");
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Could not add this section.");
@@ -653,7 +677,18 @@ function SectionsTab({
   }
 
   async function rename() {
-    if (!editing || !editName.trim()) return;
+    if (!editing || !editName.trim()) {
+      setSectionFields((current) => ({
+        ...current,
+        editName: "Enter a section name.",
+      }));
+      return;
+    }
+    setSectionFields((current) => {
+      const next = { ...current };
+      delete next.editName;
+      return next;
+    });
     setBusy(true);
     try {
       await schoolApi.updateSection(schoolSlug, editing.id, editName.trim());
@@ -725,6 +760,7 @@ function SectionsTab({
               label="New section"
               placeholder="A"
               value={name}
+              error={sectionFields.name}
               onChange={(event) => setName(event.target.value)}
             />
           </div>
@@ -749,7 +785,12 @@ function SectionsTab({
           </>
         }
       >
-        <Input label="Section name" value={editName} onChange={(event) => setEditName(event.target.value)} />
+        <Input
+          label="Section name"
+          value={editName}
+          error={sectionFields.editName}
+          onChange={(event) => setEditName(event.target.value)}
+        />
       </Modal>
 
       <ConfirmModal
@@ -789,17 +830,19 @@ function SubjectsTab({
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState<Subject | null>(null);
+  const [subjectFields, setSubjectFields] = useState<Record<string, string>>({});
 
   async function add(event: React.FormEvent) {
     event.preventDefault();
-    if (!name.trim()) {
-      onError("Enter a subject name.");
-      return;
-    }
-    if (code.trim().length > 30) {
-      onError("Keep the subject code to 30 characters or fewer.");
-      return;
-    }
+
+    // A subject needs a name so teachers and students can find it; the code is
+    // optional but capped at 30 characters so it stays readable on timetables.
+    const next: Record<string, string | null> = {};
+    next.name = textError(name, "Subject name", { min: 1, max: 100 });
+    next.code = optionalTextError(code, "Subject code", { min: 1, max: 30 });
+    setSubjectFields(compactErrors(next));
+    if (hasErrors(next)) return;
+
     setBusy(true);
     try {
       await schoolApi.createSubject(schoolSlug, {
@@ -809,6 +852,7 @@ function SubjectsTab({
       });
       setName("");
       setCode("");
+      setSubjectFields({});
       onChanged("Subject added.");
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Could not add this subject.");
@@ -871,12 +915,14 @@ function SubjectsTab({
             label="Subject"
             placeholder="Mathematics"
             value={name}
+            error={subjectFields.name}
             onChange={(event) => setName(event.target.value)}
           />
           <Input
             label="Code"
             placeholder="MATH"
             value={code}
+            error={subjectFields.code}
             onChange={(event) => setCode(event.target.value)}
           />
           <Button type="submit" isLoading={busy}>
@@ -924,6 +970,7 @@ function TeachersTab({
   const [teacherId, setTeacherId] = useState(teachers[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState<TeachingAssignment | null>(null);
+  const [assignmentFields, setAssignmentFields] = useState<Record<string, string>>({});
 
   const assignments = useApi(
     () =>
@@ -935,10 +982,16 @@ function TeachersTab({
 
   async function add(event: React.FormEvent) {
     event.preventDefault();
-    if (!sectionId || !subjectId || !teacherId) {
-      onError("Choose a section, a subject and a teacher.");
-      return;
-    }
+
+    // All three are required because an assignment links one teacher to one
+    // subject in one section - leaving any blank would save an incomplete link.
+    const next: Record<string, string | null> = {};
+    if (!sectionId) next.sectionId = "Choose a section.";
+    if (!subjectId) next.subjectId = "Choose a subject.";
+    if (!teacherId) next.teacherId = "Choose a teacher.";
+    setAssignmentFields(compactErrors(next));
+    if (hasErrors(next)) return;
+
     setBusy(true);
     try {
       await schoolApi.createTeachingAssignment(schoolSlug, {
@@ -992,6 +1045,7 @@ function TeachersTab({
       <Select
         label="Section"
         value={sectionId}
+        error={assignmentFields.sectionId}
         options={sections.map((section) => ({
           value: section.id,
           label: section.section,
@@ -1042,12 +1096,14 @@ function TeachersTab({
           <Select
             label="Teacher"
             value={teacherId}
+            error={assignmentFields.teacherId}
             options={teachers.map((teacher) => ({ value: teacher.id, label: teacher.name }))}
             onChange={(event) => setTeacherId(event.target.value)}
           />
           <Select
             label="Subject"
             value={subjectId}
+            error={assignmentFields.subjectId}
             options={subjects.map((subject) => ({ value: subject.id, label: subject.name }))}
             onChange={(event) => setSubjectId(event.target.value)}
           />

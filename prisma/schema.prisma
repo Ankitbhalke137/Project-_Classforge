@@ -25,11 +25,14 @@ enum MembershipStatus {
 }
 
 model Tenant {
-  id        String       @id @default(uuid()) @db.Uuid
-  name      String       @db.VarChar(150)
-  slug      String       @unique @db.VarChar(100)
-  status    TenantStatus @default(ACTIVE)
-  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String       @db.VarChar(150)
+  slug         String       @unique @db.VarChar(100)
+  contactEmail String?      @map("contact_email") @db.VarChar(254)
+  contactPhone String?      @map("contact_phone") @db.VarChar(50)
+  address      String?      @db.VarChar(300)
+  status       TenantStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
 
   memberships   Membership[]
   academicYears AcademicYear[]

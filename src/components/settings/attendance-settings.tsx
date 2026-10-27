@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { useIsReadOnly, useSchoolSlug } from "@/lib/hooks";
 import { ATTENDANCE_STATUSES } from "@/types";
+import { integerError } from "@/lib/validation";
 
 const STATUS_INFO: {
   key: (typeof ATTENDANCE_STATUSES)[number];
@@ -75,6 +77,7 @@ export function AttendanceSettingsSection() {
   const [policy, setPolicy] = useState<AttendancePolicy>(() => getInitialPolicy(storageKey));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Synchronize if switching to a different school
@@ -85,9 +88,20 @@ export function AttendanceSettingsSection() {
     return () => clearTimeout(timer);
   }, [storageKey]);
 
-  function handleSave(event: React.FormEvent) {
+  function validate(): boolean {
+    const lateError = integerError(policy.lateThresholdMinutes, {
+      label: "Late arrival threshold",
+      min: 0,
+      max: 120,
+      required: true,
+    });
+    setError(lateError ?? null);
+    return !lateError;
+  }
+
+  async function handleSave(event: React.FormEvent) {
     event.preventDefault();
-    if (readOnly) return;
+    if (readOnly || !validate()) return;
     setSaving(true);
     setSaved(false);
 
@@ -178,8 +192,8 @@ export function AttendanceSettingsSection() {
               </label>
             </div>
 
-            <div>
-              <label htmlFor="late-threshold" className="text-sm font-medium text-primary block mb-2">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="late-threshold" className="text-sm font-medium text-primary">
                 Late arrival threshold (minutes)
               </label>
               <input
@@ -192,8 +206,14 @@ export function AttendanceSettingsSection() {
                 onChange={(event) =>
                   setPolicy((p) => ({ ...p, lateThresholdMinutes: Number(event.target.value) || 0 }))
                 }
-                className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft"
+                className={cn(
+                  "w-full rounded-xl border px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft",
+                  error ? "border-danger-600 ring-1 ring-danger-600" : "border-line",
+                )}
               />
+              {error ? (
+                <p role="alert" className="mt-1 text-xs text-danger-600">{error}</p>
+              ) : null}
             </div>
 
             <div className="pt-4 flex items-center gap-3 justify-between">

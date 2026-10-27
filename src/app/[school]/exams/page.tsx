@@ -13,6 +13,13 @@ import { PaginationBar } from "@/components/ui/pagination";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
 import { ApiError, schoolApi } from "@/lib/api";
 import {
+  compactErrors,
+  dateError,
+  hasErrors,
+  integerError,
+  textError,
+} from "@/lib/validation";
+import {
   useApi,
   useMembership,
   useRole,
@@ -240,20 +247,39 @@ function NewExamModal({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
 
-    const next: Record<string, string> = {};
-    if (!name.trim()) next.name = "Name the exam";
-    if (!sectionId) next.sectionId = "Choose a class";
-    if (!subjectId) next.subjectId = "Choose the subject";
-    if (!examDate) next.examDate = "Choose the exam date";
-    const max = Number(maxMarks);
-    const pass = Number(passMarks);
-    if (!Number.isFinite(max) || max < 1) next.maxMarks = "At least 1";
-    if (!Number.isFinite(pass) || pass < 0) next.passMarks = "Cannot be negative";
-    if (Number.isFinite(max) && Number.isFinite(pass) && pass > max) {
-      next.passMarks = "Cannot be above the maximum";
+    // Why each field is validated before the call:
+    // - exam name: the paper must have a title so students know what they sit.
+    // - class / subject / term: an exam is meaningless without the class,
+    //   subject and term it belongs to.
+    // - date: marks need a date; a date in the past would break ordering.
+    // - max marks: must be a whole number between 1 and 1000 so results can be
+    //   compared across the school. Pass marks must not exceed it.
+    const next: Record<string, string | null> = {};
+    next.name = textError(name, "Exam name", { min: 1, max: 100 });
+    if (!sectionId) next.sectionId = "Choose a class.";
+    if (!subjectId) next.subjectId = "Choose the subject.";
+    next.examDate = dateError(examDate, "Exam date", { required: true });
+    next.maxMarks = integerError(maxMarks, {
+      label: "Maximum marks",
+      min: 1,
+      max: 1000,
+      required: true,
+    });
+    next.passMarks = integerError(passMarks, {
+      label: "Pass marks",
+      min: 0,
+      max: 1000,
+      required: true,
+    });
+    if (
+      next.maxMarks === null &&
+      next.passMarks === null &&
+      Number(passMarks) > Number(maxMarks)
+    ) {
+      next.passMarks = "Pass marks cannot be above the maximum marks.";
     }
-    setErrors(next);
-    if (Object.keys(next).length > 0) return;
+    setErrors(compactErrors(next));
+    if (hasErrors(next)) return;
 
     setBusy(true);
     setFormError(null);
@@ -264,8 +290,8 @@ function NewExamModal({
         subjectId,
         term: activeTerm || null,
         examDate,
-        maxMarks: max,
-        passMarks: pass,
+        maxMarks: Number(maxMarks),
+        passMarks: Number(passMarks),
       });
       reset();
       onSaved(exam);
