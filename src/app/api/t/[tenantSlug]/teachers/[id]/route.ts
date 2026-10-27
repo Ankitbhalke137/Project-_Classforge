@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError, NotFoundError } from "@/lib/errors";
 import {
   deactivateTeacher,
@@ -30,10 +30,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       "TEACHER",
     ]);
 
-    const teacher = await prisma.teacher.findFirst({
-      where: { id, tenantId: tenant.id },
-      include: teacherInclude(tenant.id),
-    });
+    const teacher = await withTenant(tenant.id, async (tx) =>
+      tx.teacher.findFirst({
+        where: { id, tenantId: tenant.id },
+        include: teacherInclude(tenant.id),
+      })
+    );
     if (!teacher) throw new NotFoundError("Teacher not found.");
 
     return NextResponse.json(formatTeacher(teacher));

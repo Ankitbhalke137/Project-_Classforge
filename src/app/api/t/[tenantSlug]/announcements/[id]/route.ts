@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { BadRequestError, ForbiddenError, handleApiError, NotFoundError } from "@/lib/errors";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,39 +71,41 @@ export async function GET(
     assertValidId(id);
     const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug);
 
-    const notice = await prisma.announcement.findFirst({
-      where: { id, tenantId: tenant.id },
-      include: { creator: { select: { id: true, name: true } } },
-    });
-    if (!notice) throw new NotFoundError("Announcement not found.");
+    return await withTenant(tenant.id, async (tx) => {
+      const notice = await tx.announcement.findFirst({
+        where: { id, tenantId: tenant.id },
+        include: { creator: { select: { id: true, name: true } } },
+      });
+      if (!notice) throw new NotFoundError("Announcement not found.");
 
-    const role: string = membership.role;
-    if (role === "STUDENT" || role === "PARENT") {
-      if (notice.sectionId) {
-        const student =
-          role === "STUDENT"
-            ? await prisma.student.findFirst({
-                where: { tenantId: tenant.id, userId: user.id },
-                select: {
-                  enrolments: {
-                    where: { status: "ACTIVE", sectionId: notice.sectionId },
-                    select: { id: true },
+      const role: string = membership.role;
+      if (role === "STUDENT" || role === "PARENT") {
+        if (notice.sectionId) {
+          const student =
+            role === "STUDENT"
+              ? await tx.student.findFirst({
+                  where: { tenantId: tenant.id, userId: user.id },
+                  select: {
+                    enrolments: {
+                      where: { status: "ACTIVE", sectionId: notice.sectionId },
+                      select: { id: true },
+                    },
                   },
-                },
-              })
-            : null;
-        if (!student?.enrolments.length) {
-          throw new ForbiddenError("This notice is not available to you.");
-        }
-      } else {
-        const allowed = role === "STUDENT" ? ["EVERYONE", "STUDENTS"] : ["EVERYONE", "PARENTS"];
-        if (!notice.audience.some((audience) => allowed.includes(audience))) {
-          throw new ForbiddenError("This notice is not available to you.");
+                })
+              : null;
+          if (!student?.enrolments.length) {
+            throw new ForbiddenError("This notice is not available to you.");
+          }
+        } else {
+          const allowed = role === "STUDENT" ? ["EVERYONE", "STUDENTS"] : ["EVERYONE", "PARENTS"];
+          if (!notice.audience.some((audience) => allowed.includes(audience))) {
+            throw new ForbiddenError("This notice is not available to you.");
+          }
         }
       }
-    }
 
-    return NextResponse.json(formatNotice(notice));
+      return NextResponse.json(formatNotice(notice));
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -132,29 +134,32 @@ export async function PATCH(
       );
     }
 
-    const current = await prisma.announcement.findFirst({
-      where: { id, tenantId: tenant.id },
-      select: { id: true, createdBy: true },
-    });
-    if (!current) throw new NotFoundError("Announcement not found.");
-    if (membership.role === "TEACHER" && current.createdBy !== membership.userId) {
-      throw new ForbiddenError("You can only edit notices you created.");
-    }
-
     const input = parsed.data;
-    const notice = await prisma.announcement.update({
-      where: { id },
-      data: {
-        title: input.title,
-        content: input.body,
-        audience: input.audience ? [...new Set(input.audience)] : undefined,
-        priority: input.priority,
-        pinned: input.pinned,
-      },
-      include: { creator: { select: { id: true, name: true } } },
-    });
 
-    return NextResponse.json(formatNotice(notice));
+    return await withTenant(tenant.id, async (tx) => {
+      const current = await tx.announcement.findFirst({
+        where: { id, tenantId: tenant.id },
+        select: { id: true, createdBy: true },
+      });
+      if (!current) throw new NotFoundError("Announcement not found.");
+      if (membership.role === "TEACHER" && current.createdBy !== membership.userId) {
+        throw new ForbiddenError("You can only edit notices you created.");
+      }
+
+      const notice = await tx.announcement.update({
+        where: { id },
+        data: {
+          title: input.title,
+          content: input.body,
+          audience: input.audience ? [...new Set(input.audience)] : undefined,
+          priority: input.priority,
+          pinned: input.pinned,
+        },
+        include: { creator: { select: { id: true, name: true } } },
+      });
+
+      return NextResponse.json(formatNotice(notice));
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -173,17 +178,19 @@ export async function DELETE(
       "TEACHER",
     ]);
 
-    const notice = await prisma.announcement.findFirst({
-      where: { id, tenantId: tenant.id },
-      select: { id: true, createdBy: true },
-    });
-    if (!notice) throw new NotFoundError("Announcement not found.");
-    if (membership.role === "TEACHER" && notice.createdBy !== membership.userId) {
-      throw new ForbiddenError("You can only delete notices you created.");
-    }
+    return await withTenant(tenant.id, async (tx) => {
+      const notice = await tx.announcement.findFirst({
+        where: { id, tenantId: tenant.id },
+        select: { id: true, createdBy: true },
+      });
+      if (!notice) throw new NotFoundError("Announcement not found.");
+      if (membership.role === "TEACHER" && notice.createdBy !== membership.userId) {
+        throw new ForbiddenError("You can only delete notices you created.");
+      }
 
-    await prisma.announcement.delete({ where: { id } });
-    return NextResponse.json({ removed: true, id });
+      await tx.announcement.delete({ where: { id } });
+      return NextResponse.json({ removed: true, id });
+    });
   } catch (error) {
     return handleApiError(error);
   }

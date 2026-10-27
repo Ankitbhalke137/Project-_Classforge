@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { ForbiddenError, handleApiError, NotFoundError } from "@/lib/errors";
 import { deleteClass, listClasses, updateClass } from "@/lib/services/academic-service";
 
@@ -25,15 +25,17 @@ export async function GET(
 
     // A student can only read the section they are actively enrolled in.
     if (membership.role === "STUDENT") {
-      const student = await prisma.student.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-        select: {
-          enrolments: {
-            where: { status: "ACTIVE", sectionId: id },
-            select: { id: true },
+      const student = await withTenant(tenant.id, async (tx) =>
+        tx.student.findFirst({
+          where: { tenantId: tenant.id, userId: user.id },
+          select: {
+            enrolments: {
+              where: { status: "ACTIVE", sectionId: id },
+              select: { id: true },
+            },
           },
-        },
-      });
+        })
+      );
       if (!student?.enrolments.length) {
         throw new ForbiddenError("You can only view your own class.");
       }

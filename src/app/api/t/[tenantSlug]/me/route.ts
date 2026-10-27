@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 
 /**
@@ -14,47 +13,14 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
     const { tenantSlug } = await context.params;
     const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug);
 
-    const isParent = membership.role === "PARENT" || membership.role.toString() === "PARENT";
+    const isParent = membership.role === "PARENT";
 
-    const [student, teacher, dbChildren] = await Promise.all([
-      prisma.student.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-        include: {
-          enrolments: {
-            where: { status: "ACTIVE" },
-            take: 1,
-            select: {
-              sectionId: true,
-              section: {
-                select: {
-                  name: true,
-                  schoolClass: { select: { name: true } },
-                },
-              },
-            },
-          },
-        },
-      }),
-      prisma.teacher.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-        include: {
-          teachingAssignments: {
-            include: {
-              subject: { select: { name: true } },
-            },
-          },
-        },
-      }),
-      isParent
-        ? prisma.student.findMany({
-            where: {
-              tenantId: tenant.id,
-              OR: [
-                { guardianName: { contains: user.name, mode: "insensitive" } },
-                { guardianPhone: user.email },
-                { userId: user.id },
-              ],
-            },
+    const { student, teacher, dbChildren, homeroomClasses } = await withTenant(
+      tenant.id,
+      async (tx) => {
+        const [student, teacher] = await Promise.all([
+          tx.student.findFirst({
+            where: { tenantId: tenant.id, userId: user.id },
             include: {
               enrolments: {
                 where: { status: "ACTIVE" },
@@ -70,10 +36,61 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
                 },
               },
             },
-            take: 5,
-          })
-        : Promise.resolve([]),
-    ]);
+          }),
+          tx.teacher.findFirst({
+            where: { tenantId: tenant.id, userId: user.id },
+            include: {
+              teachingAssignments: {
+                include: {
+                  subject: { select: { name: true } },
+                },
+              },
+            },
+          }),
+        ]);
+
+        const dbChildren = isParent
+          ? await tx.student.findMany({
+              where: {
+                tenantId: tenant.id,
+                OR: [
+                  { guardianName: { contains: user.name, mode: "insensitive" } },
+                  { guardianPhone: user.email },
+                  { userId: user.id },
+                ],
+              },
+              include: {
+                enrolments: {
+                  where: { status: "ACTIVE" },
+                  take: 1,
+                  select: {
+                    sectionId: true,
+                    section: {
+                      select: {
+                        name: true,
+                        schoolClass: { select: { name: true } },
+                      },
+                    },
+                  },
+                },
+              },
+              take: 5,
+            })
+          : [];
+
+        // A teacher's assigned classes = sections they teach + sections of classes
+        // they are homeroom teacher of. A homeroom-only teacher (no assignments yet)
+        // still needs to see their class on the dashboard.
+        const homeroomClasses = teacher
+          ? await tx.schoolClass.findMany({
+              where: { tenantId: tenant.id, homeroomTeacherId: teacher.id },
+              select: { sections: { select: { id: true } } },
+            })
+          : [];
+
+        return { student, teacher, dbChildren, homeroomClasses };
+      },
+    );
 
     const formattedChildren = dbChildren.map((st) => ({
       id: st.id,
@@ -95,16 +112,6 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
       parentId: user.id,
       admittedOn: st.createdAt.toISOString(),
     }));
-
-    // A teacher's assigned classes = sections they teach + sections of classes
-    // they are homeroom teacher of. A homeroom-only teacher (no assignments yet)
-    // still needs to see their class on the dashboard.
-    const homeroomClasses = teacher
-      ? await prisma.schoolClass.findMany({
-          where: { tenantId: tenant.id, homeroomTeacherId: teacher.id },
-          select: { sections: { select: { id: true } } },
-        })
-      : [];
 
     return NextResponse.json({
       role: membership.role,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError, NotFoundError } from "@/lib/errors";
 import { deleteSection, updateSection } from "@/lib/services/academic-service";
 
@@ -18,16 +18,18 @@ export async function GET(
       "TEACHER",
     ]);
 
-    const section = await prisma.section.findFirst({
-      where: { id, tenantId: tenant.id },
-      select: {
-        id: true,
-        classId: true,
-        name: true,
-        schoolClass: { select: { name: true } },
-        _count: { select: { enrolments: { where: { status: "ACTIVE" } } } },
-      },
-    });
+    const section = await withTenant(tenant.id, async (tx) =>
+      tx.section.findFirst({
+        where: { id, tenantId: tenant.id },
+        select: {
+          id: true,
+          classId: true,
+          name: true,
+          schoolClass: { select: { name: true } },
+          _count: { select: { enrolments: { where: { status: "ACTIVE" } } } },
+        },
+      })
+    );
     if (!section) throw new NotFoundError("Section not found.");
 
     return NextResponse.json({

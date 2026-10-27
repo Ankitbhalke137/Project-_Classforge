@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { ForbiddenError, handleApiError, NotFoundError } from "@/lib/errors";
 import { deleteSubject, listSubjects, updateSubject } from "@/lib/services/academic-service";
 
@@ -25,15 +25,17 @@ export async function GET(
 
     // Students only reach subjects attached to their own class.
     if (membership.role === "STUDENT") {
-      const student = await prisma.student.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-        select: {
-          enrolments: {
-            where: { status: "ACTIVE" },
-            select: { section: { select: { classId: true } } },
+      const student = await withTenant(tenant.id, async (tx) =>
+        tx.student.findFirst({
+          where: { tenantId: tenant.id, userId: user.id },
+          select: {
+            enrolments: {
+              where: { status: "ACTIVE" },
+              select: { section: { select: { classId: true } } },
+            },
           },
-        },
-      });
+        })
+      );
       const ownClasses = new Set(
         student?.enrolments.map((enrolment) => enrolment.section.classId) ?? [],
       );

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { getTimetable, replaceTimetable } from "@/lib/services/academic-service";
 
@@ -26,14 +26,16 @@ export async function GET(
 
     // A student may only read the timetable of their own section.
     if (membership.role === "STUDENT") {
-      const own = await prisma.student.findFirst({
-        where: {
-          tenantId: tenant.id,
-          userId: user.id,
-          enrolments: { some: { status: "ACTIVE", sectionId: id } },
-        },
-        select: { id: true },
-      });
+      const own = await withTenant(tenant.id, async (tx) =>
+        tx.student.findFirst({
+          where: {
+            tenantId: tenant.id,
+            userId: user.id,
+            enrolments: { some: { status: "ACTIVE", sectionId: id } },
+          },
+          select: { id: true },
+        })
+      );
       if (!own) {
         throw new ForbiddenError("You may only view your own class timetable.");
       }

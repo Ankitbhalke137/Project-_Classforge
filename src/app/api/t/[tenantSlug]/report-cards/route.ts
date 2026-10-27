@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { BadRequestError, ForbiddenError, NotFoundError, handleApiError } from "@/lib/errors";
 import { getClassReportCards } from "@/lib/services/report-card-service";
 import { getTeacherAssignedSectionIds } from "@/lib/services/student-service";
@@ -30,32 +30,34 @@ export async function GET(
     }
 
     if (membership.role === "TEACHER") {
-      const assignedSectionIds = await getTeacherAssignedSectionIds(
-        prisma,
-        tenant.id,
-        membership.userId,
-      );
+      await withTenant(tenant.id, async (tx) => {
+        const assignedSectionIds = await getTeacherAssignedSectionIds(
+          tx,
+          tenant.id,
+          membership.userId,
+        );
 
-      const section = await prisma.section.findFirst({
-        where: { id: classId, tenantId: tenant.id },
-        select: { id: true },
-      });
-
-      let isAssigned = false;
-      if (section) {
-        isAssigned = assignedSectionIds.includes(section.id);
-      } else {
-        const schoolClass = await prisma.schoolClass.findFirst({
+        const section = await tx.section.findFirst({
           where: { id: classId, tenantId: tenant.id },
-          select: { sections: { select: { id: true } } },
+          select: { id: true },
         });
-        if (!schoolClass) throw new NotFoundError("Class not found.");
-        isAssigned = schoolClass.sections.some((s) => assignedSectionIds.includes(s.id));
-      }
 
-      if (!isAssigned) {
-        throw new ForbiddenError("You can only view report cards for classes assigned to you.");
-      }
+        let isAssigned = false;
+        if (section) {
+          isAssigned = assignedSectionIds.includes(section.id);
+        } else {
+          const schoolClass = await tx.schoolClass.findFirst({
+            where: { id: classId, tenantId: tenant.id },
+            select: { sections: { select: { id: true } } },
+          });
+          if (!schoolClass) throw new NotFoundError("Class not found.");
+          isAssigned = schoolClass.sections.some((s) => assignedSectionIds.includes(s.id));
+        }
+
+        if (!isAssigned) {
+          throw new ForbiddenError("You can only view report cards for classes assigned to you.");
+        }
+      });
     }
 
     return NextResponse.json(await getClassReportCards(tenant.id, classId, term));
