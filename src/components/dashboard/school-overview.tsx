@@ -51,14 +51,20 @@ function calendarTerms(calendar: SchoolCalendar | null): TermWindow[] {
 export function SchoolOverview() {
   const membership = useMembership();
   const schoolSlug = membership?.schoolSlug ?? "";
+  const activeRole = useAuth((state) => state.activeRole);
 
-  const dashboard = useApi(() => schoolApi.getDashboard(schoolSlug), [schoolSlug]);
-  const trend = useApi(() => schoolApi.getAttendanceTrend(schoolSlug, { days: 5 }), [
-    schoolSlug,
-  ]);
-  const daySheet = useApi(() => schoolApi.getDaySheet(schoolSlug, { date: todayIso() }), [
-    schoolSlug,
-  ]);
+  const dashboard = useApi(
+    () => schoolApi.getDashboard(schoolSlug),
+    [schoolSlug, activeRole],
+  );
+  const trend = useApi(
+    () => schoolApi.getAttendanceTrend(schoolSlug, { days: 5 }),
+    [schoolSlug, activeRole],
+  );
+  const daySheet = useApi(
+    () => schoolApi.getDaySheet(schoolSlug, { date: todayIso() }),
+    [schoolSlug, activeRole],
+  );
   const { calendar } = useSchoolCalendar();
 
   if (dashboard.loading || !dashboard.data) {

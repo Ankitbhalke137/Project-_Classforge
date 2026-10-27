@@ -188,18 +188,21 @@ export async function resolveTenantContext(
     throw new ForbiddenError("This school is currently suspended.");
   }
 
-  // 2. Find user's active membership in this specific school
-  const membership = user.memberships.find((m) => m.tenantId === tenant.id);
+  // 2. Find user's memberships in this specific school
+  const memberships = user.memberships.filter((m) => m.tenantId === tenant.id);
 
-  // Strict tenant isolation: Super Admin manages schools but has no implicit access to student data.
-  // A valid session without membership in this school returns 403.
-  if (!membership) {
+  if (memberships.length === 0) {
     throw new ForbiddenError("You do not have access to this school.");
   }
 
-  // 3. Verify role authorization if specified
+  // Use the first membership as the active context for this school.
+  const membership = memberships[0];
+
+  // 3. Verify role authorization if specified — check ALL memberships, not
+  // just the first one, so a user with multiple roles (e.g. TEACHER and
+  // SCHOOL_ADMIN) can access endpoints requiring any of their roles.
   if (allowedRoles && allowedRoles.length > 0) {
-    if (!allowedRoles.includes(membership.role)) {
+    if (!memberships.some((m) => allowedRoles.includes(m.role))) {
       throw new ForbiddenError("You do not have permission to perform this action.");
     }
   }
