@@ -126,10 +126,11 @@ export function useDebounced<T>(value: T, delay = 300): T {
 export function useIdentity(): { identity: SchoolIdentity | null; loading: boolean } {
   const email = useAuth((state) => state.user?.email);
   const schoolSlug = useSchoolSlug();
+  const activeRole = useAuth((state) => state.activeRole);
 
   const { data, loading } = useApi(
-    () => schoolApi.getIdentity(schoolSlug ?? "", email ?? ""),
-    [schoolSlug, email],
+    () => schoolApi.getIdentity(schoolSlug ?? "", email ?? "", activeRole ?? undefined),
+    [schoolSlug, email, activeRole],
   );
 
   return { identity: data, loading };

@@ -658,8 +658,14 @@ export const schoolApi = {
   }),
 
   /** Who the signed-in account is inside this school. */
-  getIdentity: (schoolSlug: string, email: string) =>
-    api<SchoolIdentity>(withQuery(`/api/t/${schoolSlug}/me`, { email })),
+  getIdentity: (
+    schoolSlug: string,
+    email: string,
+    role?: string,
+  ) =>
+    api<SchoolIdentity>(
+      withQuery(`/api/t/${schoolSlug}/me`, { email, role }),
+    ),
 
   /* --- Announcements --- */
   listAnnouncements: (

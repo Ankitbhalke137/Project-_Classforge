@@ -3,51 +3,65 @@ import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 
 /**
- * GET /api/t/:tenantSlug/me?email=
+ * GET /api/t/:tenantSlug/me?email=&role=
  *
  * Who the signed-in account is inside this school: their student record, their
  * teacher record, or their children.
+ *
+ * When the account holds multiple roles in this school, pass ?role= to select
+ * which role's profile to return. Without it, the first active membership is
+ * used.
  */
 export async function GET(request: NextRequest, context: { params: Promise<{ tenantSlug: string }> }) {
   try {
     const { tenantSlug } = await context.params;
     const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug);
 
-    const isParent = membership.role === "PARENT";
+    // Which role's profile to return: the requested role, or the active
+    // membership's role as a fallback.
+    const requestedRole = (request.nextUrl.searchParams.get("role") ?? "") as string;
+    const role = requestedRole || membership.role;
+
+    const isParent = role === "PARENT";
+    const isStudent = role === "STUDENT";
+    const isTeacher = role === "TEACHER";
 
     const { student, teacher, dbChildren, homeroomClasses } = await withTenant(
       tenant.id,
       async (tx) => {
-        const [student, teacher] = await Promise.all([
-          tx.student.findFirst({
-            where: { tenantId: tenant.id, userId: user.id },
-            include: {
-              enrolments: {
-                where: { status: "ACTIVE" },
-                take: 1,
-                select: {
-                  sectionId: true,
-                  section: {
-                    select: {
-                      name: true,
-                      schoolClass: { select: { name: true } },
+        const student = isStudent
+          ? await tx.student.findFirst({
+              where: { tenantId: tenant.id, userId: user.id },
+              include: {
+                enrolments: {
+                  where: { status: "ACTIVE" },
+                  take: 1,
+                  select: {
+                    sectionId: true,
+                    section: {
+                      select: {
+                        name: true,
+                        schoolClass: { select: { name: true } },
+                      },
                     },
                   },
                 },
               },
-            },
-          }),
-          tx.teacher.findFirst({
-            where: { tenantId: tenant.id, userId: user.id },
-            include: {
-              teachingAssignments: {
-                include: {
-                  subject: { select: { name: true } },
+            })
+          : null;
+
+        const teacher = isTeacher
+          ? await tx.teacher.findFirst({
+              where: { tenantId: tenant.id, userId: user.id },
+              include: {
+                teachingAssignments: {
+                  include: {
+                    subject: { select: { name: true } },
+                  },
                 },
               },
-            },
-          }),
-        ]);
+            })
+          : null;
 
         const dbChildren = isParent
           ? await tx.student.findMany({
@@ -114,7 +128,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
     }));
 
     return NextResponse.json({
-      role: membership.role,
+      role,
       student: student
         ? {
             id: student.id,
