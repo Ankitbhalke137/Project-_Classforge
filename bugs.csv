@@ -1,5 +1,0 @@
-Issue ID,Module,Layer,Description,Suggested Fix,Severity,Status
-BUG-001,Frontend,Frontend,No loading spinner during role switch — dashboard briefly shows old data before new data loads,Add optimistic loading state in useApi when deps change,Low,Open
-BUG-002,Frontend,Frontend,Forgot password modal shows success even if SMTP not configured (silent fail),Show warning if email sending is disabled,Low,Open
-BUG-003,Backend,Backend,No pagination on /api/t/:tenantSlug/dashboard announcements — returns only 5,Add pagination params to dashboard endpoint,Low,Open
-BUG-004,Frontend,Frontend,"Forgot password link goes to info page, not actual reset flow",Create /reset-password page with token validation,Low,Open
