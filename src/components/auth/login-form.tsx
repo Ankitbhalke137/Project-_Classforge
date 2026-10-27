@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { AlertIcon, EyeIcon, EyeOffIcon, ShieldCheckIcon } from "@/components/ui/icons";
 import { ApiError, api } from "@/lib/api";
-import { landingPath, loginContexts, needsSchoolSelection } from "@/lib/nav";
+import { landingPath, loginContexts } from "@/lib/nav";
 import { useAuth } from "@/store/auth";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import type { Role } from "@/types";
@@ -20,13 +20,6 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type FieldErrors = {
   email?: string;
   password?: string;
-};
-
-type ContextOption = {
-  schoolSlug: string;
-  schoolName: string;
-  role: Role;
-  status: string;
 };
 
 export function LoginForm() {
@@ -46,8 +39,6 @@ export function LoginForm() {
   const [forgotSubmitting, setForgotSubmitting] = useState(false);
   const [forgotMessage, setForgotMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
-  const [showSchoolSelector, setShowSchoolSelector] = useState(false);
-  const [contextOptions, setContextOptions] = useState<ContextOption[]>([]);
 
   /** The same checks the server makes, run early so the fields can speak first. */
   function validate(): FieldErrors {
@@ -92,7 +83,6 @@ export function LoginForm() {
 
       // Build the list of (school, role) combinations the user can sign in as.
       const options = loginContexts(schools);
-      setContextOptions(options);
 
       // Super Admin sits outside every school — send straight to /platform
       // even if they have no school memberships.
@@ -107,13 +97,8 @@ export function LoginForm() {
         return;
       }
 
-      if (needsSchoolSelection(schools)) {
-        // More than one school/role combination: let the user choose.
-        setShowSchoolSelector(true);
-        return;
-      }
-
-      // Exactly one context: sign straight in.
+      // Sign straight in with the first available (school, role) context.
+      // The user can switch school/role later from the top-left switcher.
       const only = options[0];
       setActiveContext(only.schoolSlug, only.role);
       router.replace(landingPath(user, schools));
@@ -134,14 +119,6 @@ export function LoginForm() {
     }
   }
 
-  function handleSelectContext(option: ContextOption) {
-    const { user } = useAuth.getState();
-    if (!user) return;
-    setActiveContext(option.schoolSlug, option.role);
-    setShowSchoolSelector(false);
-    router.replace(`/${option.schoolSlug}/dashboard`);
-  }
-
   async function handlePasswordChanged() {
     setShowChangePasswordModal(false);
     const { user, schools } = useAuth.getState();
@@ -157,12 +134,6 @@ export function LoginForm() {
 
     if (options.length === 0) {
       router.replace("/no-access");
-      return;
-    }
-
-    if (needsSchoolSelection(schools)) {
-      setContextOptions(options);
-      setShowSchoolSelector(true);
       return;
     }
 
@@ -433,47 +404,6 @@ export function LoginForm() {
                 description="This is your first sign in. Set a new password before you can use ClassForge."
               >
                 <ChangePasswordForm onSuccess={handlePasswordChanged} />
-              </Modal>
-            )}
-
-            {showSchoolSelector && (
-              <Modal
-                open
-                onClose={() => setShowSchoolSelector(false)}
-                title="Choose your school and role"
-                description="You belong to more than one school or hold more than one role. Pick where you want to work."
-                footer={
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setShowSchoolSelector(false)}
-                  >
-                    Cancel
-                  </Button>
-                }
-              >
-                <div className="space-y-3">
-                  {contextOptions.map((option) => (
-                    <Button
-                      key={`${option.schoolSlug}|${option.role}`}
-                      type="button"
-                      variant={option.status === "SUSPENDED" ? "ghost" : undefined}
-                      size="sm"
-                      className="w-full text-left justify-between"
-                      disabled={option.status === "SUSPENDED"}
-                      onClick={() => handleSelectContext(option)}
-                    >
-                      <span>
-                        {option.schoolName}
-                        <br />
-                        <span className="text-xs text-body">{option.role}</span>
-                      </span>
-                      {option.status === "SUSPENDED" && (
-                        <span className="text-xs text-danger-600">Suspended</span>
-                      )}
-                    </Button>
-                  ))}
-                </div>
               </Modal>
             )}
 
