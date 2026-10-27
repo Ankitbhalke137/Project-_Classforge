@@ -10,6 +10,13 @@ import { Modal } from "@/components/ui/modal";
 import { PaginationBar } from "@/components/ui/pagination";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
+import {
+  compactErrors,
+  dateError,
+  hasErrors,
+  integerError,
+  textError,
+} from "@/lib/validation";
 import { ApiError, schoolApi } from "@/lib/api";
 import { useApi, useIdentity, useMembership, useRole } from "@/lib/hooks";
 import { useAuth } from "@/store/auth";
@@ -588,23 +595,30 @@ function CreateAssignmentModal({
   const [maxMarks, setMaxMarks] = useState("20");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) {
-      setError("Title is required.");
-      return;
-    }
-    if (!classId) {
-      setError("Please select a class.");
-      return;
-    }
-    if (!subjectId) {
-      setError("Please select a subject.");
-      return;
-    }
-    if (!dueDate) {
-      setError("Due date is required.");
+
+    // Why each field is validated before the call:
+    // - title: an assignment with no name cannot be found in the student list.
+    // - class / subject: a paper belongs to exactly one class and subject.
+    // - due date: students and the timetable sort by this date.
+    // - max marks: must be a whole number 1-100 so results are comparable.
+    const next: Record<string, string | null> = {};
+    next.title = textError(title, "Title", { min: 1, max: 150 });
+    if (!classId) next.classId = "Choose a class.";
+    if (!subjectId) next.subjectId = "Choose the subject.";
+    next.dueDate = dateError(dueDate, "Due date", { required: true });
+    next.maxMarks = integerError(maxMarks, {
+      label: "Max marks",
+      min: 1,
+      max: 100,
+      required: true,
+    });
+    setFields(compactErrors(next));
+    if (hasErrors(next)) {
+      setError(null);
       return;
     }
 
@@ -637,6 +651,7 @@ function CreateAssignmentModal({
         <Input
           label="Title"
           required
+          error={fields.title}
           placeholder="e.g. Chapter 4 Exercise Problems"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -657,12 +672,14 @@ function CreateAssignmentModal({
           <Select
             label="Class"
             value={classId}
+            error={fields.classId}
             onChange={(e) => setClassId(e.target.value)}
             options={classes.map((c) => ({ value: c.id, label: c.name }))}
           />
           <Select
             label="Subject"
             value={subjectId}
+            error={fields.subjectId}
             onChange={(e) => setSubjectId(e.target.value)}
             options={subjects.map((s) => ({ value: s.id, label: s.name }))}
           />
@@ -673,6 +690,7 @@ function CreateAssignmentModal({
             label="Due Date"
             type="date"
             required
+            error={fields.dueDate}
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
           />
@@ -682,6 +700,7 @@ function CreateAssignmentModal({
             min={1}
             max={100}
             required
+            error={fields.maxMarks}
             value={maxMarks}
             onChange={(e) => setMaxMarks(e.target.value)}
           />

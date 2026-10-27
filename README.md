@@ -130,6 +130,12 @@ bcrypt hash, sets an access token (15 minutes) and a refresh token (7 days),
 and the token is read back on every request. `jose` signs the access token;
 `src/lib/auth.ts` is the only place that does.
 
+**First sign-in.** An account created with an administrator-issued temporary
+password carries `mustChangePassword: true`. Login returns the flag, the client
+shows a non-dismissible password form, and every school endpoint returns 403
+until `POST /api/auth/change-password` clears it. A password chosen by the owner
+is never flagged.
+
 **Two authorisation checks.** `requireSuperAdmin` (in `platform-auth.ts`) asks
 whether the caller has the `SUPER_ADMIN` platform role. `resolveTenantContext`
 (in `tenant-context.ts`) asks whether the caller has an active membership in
@@ -194,8 +200,6 @@ POST   /api/t/:slug/exams/:id/publish
 GET    /api/t/:slug/report-cards        ?classId term
 GET    /api/t/:slug/announcements       ?page limit search priority audience sectionId
 POST   /api/t/:slug/announcements       (Section-scoped announcements with sectionId)
-GET    /api/t/:slug/fees                ?page search status classId term
-GET    /api/t/:slug/fees/summary
 GET    /api/t/:slug/dashboard
 GET    /api/t/:slug/calendar                the academic year, terms and timetable
 GET    /api/t/:slug/notification-preferences

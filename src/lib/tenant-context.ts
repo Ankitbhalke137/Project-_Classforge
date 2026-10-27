@@ -44,9 +44,10 @@ export async function withTenant<T>(
       await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
       return callback(tx);
     },
-    // Writes on a cold serverless connection can take longer than the 5s
-    // default, and a slow transaction is rolled back with P2028.
-    { timeout: options.timeout ?? 5_000 },
+    // Writes on a cold serverless connection can take longer than Prisma's 5s
+    // default, and a slow transaction is rolled back with P2028. Every caller
+    // gets the same headroom the roster services already asked for.
+    { timeout: options.timeout ?? 15_000 },
   );
 }
 
@@ -124,6 +125,13 @@ export async function resolveTenantContext(
   allowedRoles?: MembershipRole[],
 ): Promise<TenantContext> {
   const user = await authenticateRequest(request);
+
+  // A temporary password is not a usable session: the account owner must set
+  // their own password first. The client already blocks navigation, but a
+  // direct API call must not get past it either.
+  if (user.mustChangePassword) {
+    throw new ForbiddenError("Change your password before using the app.");
+  }
 
   // 1. Find tenant by slug
   const tenant = await prisma.tenant.findUnique({

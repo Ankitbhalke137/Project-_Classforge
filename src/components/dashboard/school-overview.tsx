@@ -15,7 +15,6 @@ import {
   ClipboardCheckIcon,
   GraduationIcon,
   HistoryIcon,
-  PaymentsIcon,
   ReportsIcon,
   StudentsIcon,
   TeachersIcon,
@@ -171,7 +170,7 @@ function Greeting({
             Here&rsquo;s what&rsquo;s happening at {schoolName || "your school"} today.
           </h1>
           <p className="text-sm leading-relaxed text-body">
-            Students, teachers, classes and fee collection — the whole school in one
+            Students, teachers and classes — the whole school in one
             operational view.
           </p>
         </div>
@@ -816,20 +815,6 @@ function RecentActivity({ data }: { data: SchoolDashboard }) {
     });
   }
 
-  entries.push({
-    text: (
-      <>
-        Fee collection —{" "}
-        <strong className="font-semibold text-primary">
-          {data.fees.collectionRate}% of {formatMoney(data.fees.totalBilled)}
-        </strong>
-      </>
-    ),
-    when: "This term",
-    tint: "bg-warn-50 text-warn-600",
-    icon: <PaymentsIcon width={15} height={15} />,
-  });
-
   return (
     <Card className="flex flex-col">
       <div className="flex items-center justify-between border-b border-line px-5 py-4">
@@ -950,12 +935,4 @@ function shortStamp(isoStamp: string): string {
 
   if (stampDay === today) return `Today, ${time}`;
   return `${dayMonth(stampDay)}, ${time}`;
-}
-
-function formatMoney(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(amount);
 }

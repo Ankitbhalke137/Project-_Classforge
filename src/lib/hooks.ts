@@ -6,12 +6,11 @@ import { schoolApi } from "@/lib/api";
 import {
   canAccessArea,
   canPerform,
-  scopeFor,
   type Action,
   type SchoolArea,
 } from "@/lib/roles";
 import { useAuth } from "@/store/auth";
-import type { Membership, Role, SchoolCalendar, SchoolIdentity } from "@/types";
+import type { Membership, Role, School, SchoolCalendar, SchoolIdentity } from "@/types";
 
 /**
  * The school in the URL. Read from the pathname rather than from a layout prop,
@@ -22,10 +21,23 @@ export function useSchoolSlug(): string | null {
   return firstSegment ?? null;
 }
 
-/** This account's membership in the school in the URL, if there is one. */
+/** This account's membership in the school in the URL, if there is one.
+ *
+ * When the user holds multiple roles in the same school (e.g. TEACHER and
+ * SCHOOL_ADMIN), returns the membership matching their chosen active role.
+ */
 export function useMembership(): Membership | null {
   const slug = useSchoolSlug();
   const schools = useAuth((state) => state.schools);
+  const activeSchoolSlug = useAuth((state) => state.activeSchoolSlug);
+  const activeRole = useAuth((state) => state.activeRole);
+
+  // If the user has chosen an active context for this school, prefer it.
+  if (slug && activeSchoolSlug === slug && activeRole) {
+    const chosen = schools.find((s) => s.schoolSlug === slug && s.role === activeRole);
+    if (chosen) return chosen;
+  }
+
   return schools.find((school) => school.schoolSlug === slug) ?? null;
 }
 
@@ -33,9 +45,36 @@ export function useMembership(): Membership | null {
 export function useRole(): Role | null {
   const user = useAuth((state) => state.user);
   const membership = useMembership();
+  const activeSchoolSlug = useAuth((state) => state.activeSchoolSlug);
+  const activeRole = useAuth((state) => state.activeRole);
+  const slug = useSchoolSlug();
 
   if (user?.isSuperAdmin) return "SUPER_ADMIN";
+
+  // If the user has chosen an active role for the current school, use it.
+  if (slug && activeSchoolSlug === slug && activeRole) {
+    return activeRole;
+  }
+
   return membership?.role ?? null;
+}
+
+/** The currently chosen school and role context (set at login or via the school switcher). */
+export function useActiveContext(): { schoolSlug: string | null; role: Role | null } {
+  const activeSchoolSlug = useAuth((state) => state.activeSchoolSlug);
+  const activeRole = useAuth((state) => state.activeRole);
+  return { schoolSlug: activeSchoolSlug, role: activeRole };
+}
+
+/** All (school, role) combinations this account can sign in as. */
+export function useAvailableContexts(): { schoolSlug: string; schoolName: string; role: Role; status: School["status"] }[] {
+  const schools = useAuth((state) => state.schools);
+  return schools.map((s) => ({
+    schoolSlug: s.schoolSlug,
+    schoolName: s.schoolName,
+    role: s.role,
+    status: s.status,
+  }));
 }
 
 /** Lets a component hide a button without asking the backend first. */

@@ -462,6 +462,11 @@ function AddAdminModal({
   const [schoolId, setSchoolId] = useState(initialSchoolId);
   const [role, setRole] = useState<StaffRole>("SCHOOL_ADMIN");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    name?: string;
+    email?: string;
+    schoolId?: string;
+  }>({});
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<CreatedPlatformAdmin | null>(null);
   const [copied, setCopied] = useState(false);
@@ -472,6 +477,7 @@ function AddAdminModal({
     setSchoolId(initialSchoolId);
     setRole("SCHOOL_ADMIN");
     setError(null);
+    setFieldErrors({});
     setBusy(false);
     setCreated(null);
     setCopied(false);
@@ -484,17 +490,38 @@ function AddAdminModal({
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
+
+    const next: { name?: string; email?: string; schoolId?: string } = {};
+    if (name.trim().length < 2) next.name = "Enter their full name.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      next.email = "Enter a valid email address.";
+    }
+    if (!schoolId) next.schoolId = "Choose the school they will administer.";
+    setFieldErrors(next);
+    if (Object.keys(next).length > 0) return;
+
     setBusy(true);
     setError(null);
 
     try {
-      const result = await platformApi.createAdmin({ name, email, schoolId, role });
+      const result = await platformApi.createAdmin({
+        name: name.trim(),
+        email: email.trim(),
+        schoolId,
+        role,
+      });
       setCreated(result);
       onCreated();
     } catch (err) {
       if (err instanceof ApiError) {
-        const fieldMessage = Object.values(err.fields)[0];
-        setError(fieldMessage ?? err.message);
+        setFieldErrors({
+          name: err.fields.name,
+          email: err.fields.email,
+          schoolId: err.fields.schoolId,
+        });
+        if (!err.fields.name && !err.fields.email && !err.fields.schoolId) {
+          setError(err.message);
+        }
       } else {
         setError("Could not create the account.");
       }
@@ -599,7 +626,11 @@ function AddAdminModal({
             label="Full name"
             required
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            error={fieldErrors.name}
+            onChange={(event) => {
+              setName(event.target.value);
+              setFieldErrors((current) => ({ ...current, name: undefined }));
+            }}
             placeholder="Priya Sharma"
           />
           <Input
@@ -607,7 +638,11 @@ function AddAdminModal({
             type="email"
             required
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            error={fieldErrors.email}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setFieldErrors((current) => ({ ...current, email: undefined }));
+            }}
             placeholder="priya@greenvalley.edu"
             hint="This is the address they will sign in with."
           />
@@ -615,7 +650,11 @@ function AddAdminModal({
             label="School"
             required
             value={schoolId}
-            onChange={(event) => setSchoolId(event.target.value)}
+            error={fieldErrors.schoolId}
+            onChange={(event) => {
+              setSchoolId(event.target.value);
+              setFieldErrors((current) => ({ ...current, schoolId: undefined }));
+            }}
             options={[{ value: "", label: "Choose a school" }, ...schoolOptions]}
             hint={
               schools.length === 0

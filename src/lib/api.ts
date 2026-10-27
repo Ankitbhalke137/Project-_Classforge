@@ -13,8 +13,6 @@ import type {
   Exam,
   ExamResult,
   ExamStatus,
-  FeeInvoice,
-  FeeSummary,
   MyResults,
   Paginated,
   Parent,
@@ -49,7 +47,6 @@ import type {
  * own host.
  * ------------------------------------------------------------------ */
 
-export const MOCKS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCKS !== "false";
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 /* ------------------------------------------------------------------ *
@@ -687,26 +684,6 @@ export const schoolApi = {
       method: "PUT",
       body,
     }),
-
-  /* --- Fees --- */
-  /**
-   * `email` tells the server who is asking. A guardian and a student reach this
-   * screen too, and the server narrows the ledger to their own records — the
-   * screen must not decide that for itself.
-   */
-  listFees: (
-    schoolSlug: string,
-    params: {
-      page?: number;
-      search?: string;
-      status?: string;
-      classId?: string;
-      term?: string;
-      email?: string;
-    } = {},
-  ) => api<Paginated<FeeInvoice>>(withQuery(`/api/t/${schoolSlug}/fees`, params)),
-  getFeeSummary: (schoolSlug: string, email?: string) =>
-    api<FeeSummary>(withQuery(`/api/t/${schoolSlug}/fees/summary`, { email })),
 
   /* --- Roll-up for the dashboard --- */
   getDashboard: (schoolSlug: string) => api<SchoolDashboard>(`/api/t/${schoolSlug}/dashboard`),

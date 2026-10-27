@@ -22,6 +22,8 @@ export interface User {
   email: string;
   /** True for the platform admin, who sits outside every school. */
   isSuperAdmin: boolean;
+  /** Every role this account holds across all schools, derived from memberships. */
+  roles: Role[];
   /** True when the account was issued a temporary password and must set a new one before using the app. */
   mustChangePassword: boolean;
 }
@@ -183,12 +185,17 @@ export interface Teacher {
   userId?: string | null;
 }
 
+/**
+ * A guardian as the roster knows them. The schema stores a guardian's name and
+ * phone on each student, not a separate contact record, so `email` and
+ * `occupation` are genuinely absent rather than invented.
+ */
 export interface Parent {
   id: string;
   name: string;
-  email: string;
-  phone: string;
-  occupation: string;
+  email: string | null;
+  phone: string | null;
+  occupation: string | null;
   /** A parent with two children in the school has two entries here. */
   studentIds: string[];
 }
@@ -489,38 +496,6 @@ export interface Announcement {
   sectionId: string | null;
 }
 
-/* ---------- Fees ---------- */
-
-export const FEE_STATUSES = ["PAID", "PARTIAL", "PENDING", "OVERDUE"] as const;
-export type FeeStatus = (typeof FEE_STATUSES)[number];
-
-export const FEE_TYPES = ["Tuition", "Transport", "Examination", "Lab", "Library"] as const;
-export type FeeType = (typeof FEE_TYPES)[number];
-
-export interface FeeInvoice {
-  id: string;
-  studentId: string;
-  studentName: string;
-  className: string;
-  term: string;
-  feeType: FeeType;
-  amount: number;
-  amountPaid: number;
-  dueDate: string;
-  status: FeeStatus;
-  paidAt: string | null;
-}
-
-export interface FeeSummary {
-  totalBilled: number;
-  totalCollected: number;
-  outstanding: number;
-  overdueAmount: number;
-  overdueCount: number;
-  /** Collected / billed, 0-100. */
-  collectionRate: number;
-}
-
 /* ---------- Who am I inside this school ---------- */
 
 /**
@@ -546,7 +521,6 @@ export interface SchoolDashboard {
   classCount: number;
   parentCount: number;
   attendanceToday: { date: string; percentage: number; marked: number; total: number };
-  fees: FeeSummary;
   upcomingExams: Exam[];
   latestAnnouncements: Announcement[];
   recentExams: Exam[];

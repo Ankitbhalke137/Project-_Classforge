@@ -165,8 +165,8 @@ export async function createTeacher(tenantId: string, rawInput: unknown) {
 
   if (existingUser) {
     const [membership, teacherRow] = await Promise.all([
-      prisma.membership.findUnique({
-        where: { tenantId_userId: { tenantId, userId: existingUser.id } },
+      prisma.membership.findFirst({
+        where: { tenantId, userId: existingUser.id },
         select: { userId: true },
       }),
       prisma.teacher.findFirst({
@@ -193,7 +193,10 @@ export async function createTeacher(tenantId: string, rawInput: unknown) {
       if (temporaryPassword) {
         await tx.user.update({
           where: { id: existingUser.id },
-          data: { passwordHash: passwordHash! },
+          data: {
+            passwordHash: passwordHash!,
+            mustChangePassword: true,
+          },
         });
       }
 
@@ -239,6 +242,7 @@ export async function createTeacher(tenantId: string, rawInput: unknown) {
         name: `${input.firstName} ${input.lastName}`.trim(),
         email: input.email,
         passwordHash,
+        mustChangePassword: true,
       },
     });
 

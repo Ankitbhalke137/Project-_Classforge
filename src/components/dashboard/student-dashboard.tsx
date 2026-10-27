@@ -4,17 +4,12 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Avatar, Badge } from "@/components/ui/badge";
 import { Card, StatCard } from "@/components/ui/card";
-import {
-  AnnouncementsIcon,
-  AttendanceIcon,
-  BookIcon,
-  ExamsIcon,
-} from "@/components/ui/icons";
+import { AttendanceIcon, BookIcon, ExamsIcon } from "@/components/ui/icons";
 import { EmptyState } from "@/components/ui/states";
 import { schoolApi } from "@/lib/api";
 import { useApi, useIdentity, useMembership, useSchoolCalendar } from "@/lib/hooks";
 import { schoolHref } from "@/lib/nav";
-import { isoDate, weekdayOf } from "@/lib/schedule";
+import { weekdayOf } from "@/lib/schedule";
 import { cn, formatDate } from "@/lib/utils";
 import type { Announcement, AttendanceStatus, Grade, TimetableSlot } from "@/types";
 

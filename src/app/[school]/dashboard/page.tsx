@@ -29,7 +29,7 @@ export default function DashboardPage() {
     <ComingSoon
       area="dashboard"
       title="Your dashboard"
-      description="Attendance, marks, assignments and fees for your own records."
+      description="Attendance, marks and assignments for your own records."
     />
   );
 }

@@ -251,7 +251,17 @@ function ComposeNotice({
 
   const canPostSchoolWide = role === "SCHOOL_ADMIN";
 
+  function clearField(field: string) {
+    setFields((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
+
   function toggleAudience(value: (typeof ANNOUNCEMENT_AUDIENCES)[number]) {
+    clearField("audience");
     setAudience((current) =>
       current.includes(value)
         ? current.filter((item) => item !== value)
@@ -260,14 +270,32 @@ function ComposeNotice({
   }
 
   async function onSubmit() {
-    setBusy(true);
-    setFields({});
+    // The server validates all of this too; checking first puts the message on
+    // the field instead of making the person read a banner.
+    const next: Record<string, string> = {};
+    if (title.trim().length < 3) {
+      next.title = "Give the notice a title (at least 3 characters).";
+    }
+    if (!body.trim()) {
+      next.body = "Write the notice.";
+    }
+    if (audience.length === 0) {
+      next.audience = "Choose at least one audience.";
+    }
+    if (isTeacher && !sectionId) {
+      next.sectionId = "Choose one of your assigned sections.";
+    }
+
+    setFields(next);
     setSubmitError(null);
+    if (Object.keys(next).length > 0) return;
+
+    setBusy(true);
 
     try {
       await schoolApi.createAnnouncement(schoolSlug, {
-        title,
-        body,
+        title: title.trim(),
+        body: body.trim(),
         priority,
         audience,
         sectionId: sectionId || undefined,
@@ -320,23 +348,38 @@ function ComposeNotice({
           label="Title"
           required
           value={title}
-          onChange={(event) => setTitle(event.target.value)}
+          onChange={(event) => {
+            setTitle(event.target.value);
+            clearField("title");
+          }}
           error={fields.title}
           placeholder="What is this about?"
         />
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="notice-body" className="text-sm font-medium text-ink">
-            Message
+            Message <span className="text-danger-600">*</span>
           </label>
           <textarea
             id="notice-body"
             rows={5}
             value={body}
-            onChange={(event) => setBody(event.target.value)}
+            aria-invalid={fields.body ? true : undefined}
+            aria-describedby={fields.body ? "notice-body-error" : undefined}
+            onChange={(event) => {
+              setBody(event.target.value);
+              clearField("body");
+            }}
             placeholder="The detail people actually need to act on."
-            className="w-full rounded-lg bg-white px-3 py-2 text-sm text-ink placeholder:text-muted ring-1 ring-line focus:outline-2 focus:outline-offset-1 focus:outline-brand-600"
+            className={`w-full rounded-lg bg-white px-3 py-2 text-sm text-ink placeholder:text-muted ring-1 focus:outline-2 focus:outline-offset-1 focus:outline-brand-600 ${
+              fields.body ? "ring-danger-600" : "ring-line"
+            }`}
           />
+          {fields.body ? (
+            <p id="notice-body-error" role="alert" className="text-xs text-danger-600">
+              {fields.body}
+            </p>
+          ) : null}
         </div>
 
         <Select
@@ -356,7 +399,10 @@ function ComposeNotice({
             required={isTeacher}
             value={sectionId}
             error={fields.sectionId}
-            onChange={(event) => setSectionId(event.target.value)}
+            onChange={(event) => {
+              setSectionId(event.target.value);
+              clearField("sectionId");
+            }}
             options={sectionChoices}
             hint={
               isTeacher
@@ -391,6 +437,11 @@ function ComposeNotice({
               </button>
             ))}
           </div>
+          {fields.audience ? (
+            <p role="alert" className="mt-2 text-xs text-danger-600">
+              {fields.audience}
+            </p>
+          ) : null}
         </fieldset>
       </div>
     </Modal>

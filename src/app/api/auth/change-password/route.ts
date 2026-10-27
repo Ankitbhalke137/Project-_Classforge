@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash },
+      data: { passwordHash, mustChangePassword: false },
     });
 
     // Sign out every other session, then re-issue this one.

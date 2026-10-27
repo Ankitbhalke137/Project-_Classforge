@@ -6,6 +6,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EyeIcon, EyeOffIcon } from "@/components/ui/icons";
 import { authApi, ApiError } from "@/lib/api";
+import { useAuth } from "@/store/auth";
 
 type Field = "currentPassword" | "newPassword" | "confirmPassword";
 
@@ -56,6 +57,10 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps = {}) 
       next.newPassword = "New password is required";
     } else if (passwords.newPassword.length < 8) {
       next.newPassword = "New password must be at least 8 characters";
+    } else if (passwords.newPassword.length > 100) {
+      next.newPassword = "New password must be 100 characters or fewer";
+    } else if (passwords.newPassword === passwords.currentPassword) {
+      next.newPassword = "The new password must be different from the current one";
     }
     if (!passwords.confirmPassword) {
       next.confirmPassword = "Please confirm your new password";
@@ -76,6 +81,7 @@ export function ChangePasswordForm({ onSuccess }: ChangePasswordFormProps = {}) 
 
     try {
       const result = await authApi.changePassword(passwords);
+      useAuth.getState().passwordChanged();
       setPasswords(EMPTY);
       setErrors({});
       setMessage({ type: "success", text: result.message });

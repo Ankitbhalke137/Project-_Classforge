@@ -95,9 +95,19 @@ export function UsersPermissionsSection() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"TEACHER" | "STUDENT">("TEACHER");
   const [inviteResult, setInviteResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [inviteErrors, setInviteErrors] = useState<{ name?: string; email?: string }>({});
 
   async function handleInvite(event: React.FormEvent) {
     event.preventDefault();
+
+    const next: { name?: string; email?: string } = {};
+    if (inviteName.trim().length < 2) next.name = "Enter their full name.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail.trim())) {
+      next.email = "Enter a valid email address.";
+    }
+    setInviteErrors(next);
+    if (Object.keys(next).length > 0) return;
+
     setInviting(true);
     setInviteResult(null);
 
@@ -118,7 +128,14 @@ export function UsersPermissionsSection() {
       });
       setInviteName("");
       setInviteEmail("");
+      setInviteErrors({});
     } catch (error) {
+      if (error instanceof ApiError) {
+        setInviteErrors({
+          name: error.fields.name,
+          email: error.fields.email,
+        });
+      }
       setInviteResult({
         type: "error",
         message:
@@ -162,6 +179,10 @@ export function UsersPermissionsSection() {
           inviteRole={inviteRole}
           setInviteRole={setInviteRole}
           result={inviteResult}
+          errors={inviteErrors}
+          clearError={(field) =>
+            setInviteErrors((current) => ({ ...current, [field]: undefined }))
+          }
         />
       ) : null}
 
@@ -220,6 +241,8 @@ function InviteUserModal({
   inviteRole,
   setInviteRole,
   result,
+  errors,
+  clearError,
 }: {
   onClose: () => void;
   onInvite: (event: React.FormEvent) => void;
@@ -231,6 +254,8 @@ function InviteUserModal({
   inviteRole: "TEACHER" | "STUDENT";
   setInviteRole: (value: "TEACHER" | "STUDENT") => void;
   result: { type: "success" | "error"; message: string } | null;
+  errors: { name?: string; email?: string };
+  clearError: (field: "name" | "email") => void;
 }) {
   return (
     <div>
@@ -259,12 +284,21 @@ function InviteUserModal({
                   id="invite-name"
                   type="text"
                   value={inviteName}
-                  onChange={(event) => setInviteName(event.target.value)}
+                  onChange={(event) => {
+                    setInviteName(event.target.value);
+                    clearError("name");
+                  }}
                   placeholder="Priya Sharma"
                   disabled={inviting}
                   required
+                  aria-invalid={errors.name ? true : undefined}
                   className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft disabled:bg-page"
                 />
+                {errors.name ? (
+                  <p role="alert" className="mt-1 text-xs text-danger-600">
+                    {errors.name}
+                  </p>
+                ) : null}
               </div>
               <div className="col-span-full sm:col-span-1">
                 <label htmlFor="invite-email" className="text-sm font-medium text-primary block mb-1">
@@ -274,11 +308,20 @@ function InviteUserModal({
                   id="invite-email"
                   type="email"
                   value={inviteEmail}
-                  onChange={(event) => setInviteEmail(event.target.value)}
+                  onChange={(event) => {
+                    setInviteEmail(event.target.value);
+                    clearError("email");
+                  }}
                   placeholder="teacher@greenwood.edu"
                   disabled={inviting}
+                  aria-invalid={errors.email ? true : undefined}
                   className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-muted focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft disabled:bg-page"
                 />
+                {errors.email ? (
+                  <p role="alert" className="mt-1 text-xs text-danger-600">
+                    {errors.email}
+                  </p>
+                ) : null}
               </div>
               <div className="col-span-full sm:col-span-1">
                 <label htmlFor="invite-role" className="text-sm font-medium text-primary block mb-1">

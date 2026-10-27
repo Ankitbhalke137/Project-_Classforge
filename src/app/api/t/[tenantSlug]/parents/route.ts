@@ -35,20 +35,25 @@ export async function GET(
 
     const parentsMap = new Map<string, Parent>();
 
-    students.forEach((st, idx) => {
-      const gName = st.guardianName?.trim() || `Parent of ${st.firstName}`;
-      const key = gName.toLowerCase();
+    students.forEach((st) => {
+      const name = st.guardianName?.trim() || `Parent of ${st.firstName}`;
+      const phone = st.guardianPhone?.trim() || "";
+      // Name alone merges two unrelated guardians who happen to share it, so
+      // the phone is part of the identity where the school recorded one.
+      const key = `${name.toLowerCase()}|${phone}`;
 
       if (parentsMap.has(key)) {
         parentsMap.get(key)!.studentIds.push(st.id);
       } else {
-        const email = `${gName.toLowerCase().replace(/[^a-z0-9]/g, ".")}@${tenantSlug}.edu`;
         parentsMap.set(key, {
-          id: `par_${st.id.slice(0, 8)}`,
-          name: gName,
-          email,
-          phone: st.guardianPhone || `+91 98${idx}10 ${1000 + idx}`,
-          occupation: "Guardian",
+          // The directory is derived from student rows, so the id is an opaque
+          // encoding of the guardian key — stable across reloads and reversible
+          // by the children endpoint. It is not a database row.
+          id: `par_${Buffer.from(key).toString("base64url")}`,
+          name,
+          email: null,
+          phone: phone || null,
+          occupation: null,
           studentIds: [st.id],
         });
       }
@@ -60,8 +65,8 @@ export async function GET(
       allParents = allParents.filter(
         (p) =>
           p.name.toLowerCase().includes(search) ||
-          p.email.toLowerCase().includes(search) ||
-          p.phone.includes(search),
+          (p.email?.toLowerCase().includes(search) ?? false) ||
+          (p.phone?.includes(search) ?? false),
       );
     }
 
