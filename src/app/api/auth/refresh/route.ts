@@ -9,6 +9,7 @@ import {
     authCookieOptions
 } from "@/lib/auth-cookies";
 import { createStoredRefreshToken, consumeRefreshToken } from "@/lib/refresh-tokens";
+import { generateCsrfToken, setCsrfCookie, validateOrigin } from "@/lib/csrf";
 
 /**
  * Trades the refresh cookie for a new access token.
@@ -16,8 +17,18 @@ import { createStoredRefreshToken, consumeRefreshToken } from "@/lib/refresh-tok
  * The old refresh token is deleted as it is used, so it works exactly once. If it
  * is missing or already spent we clear both cookies and send the caller back to
  * the login screen.
+ *
+ * Enforces Origin check to prevent unauthorized cross-origin session refreshes.
  */
 export async function POST(request: Request) {
+    const originCheck = validateOrigin(request);
+    if (!originCheck.valid) {
+        return NextResponse.json(
+            { message: originCheck.reason ?? "Untrusted origin." },
+            { status: 403 }
+        );
+    }
+
     const token = request.headers
         .get("cookie")
         ?.split(";")
@@ -37,9 +48,12 @@ export async function POST(request: Request) {
     const { token: refreshToken } = await createStoredRefreshToken(user.id, used.familyId);
     const accessToken = await createAccessToken({ userId: user.id, email: user.email });
 
-    const response = NextResponse.json({ ok: true });
+    const csrfToken = generateCsrfToken(user.id);
+
+    const response = NextResponse.json({ ok: true, csrfToken });
     response.cookies.set(ACCESS_TOKEN_COOKIE, accessToken, { ...authCookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE });
     response.cookies.set(REFRESH_TOKEN_COOKIE, refreshToken, { ...authCookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE });
+    setCsrfCookie(response, csrfToken);
 
     return response;
 }

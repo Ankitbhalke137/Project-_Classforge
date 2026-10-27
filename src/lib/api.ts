@@ -72,14 +72,40 @@ function withQuery(path: string, params: Record<string, string | number | undefi
   return search ? `${path}?${search}` : path;
 }
 
+function getCsrfCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith("csrf_token="));
+  return match ? decodeURIComponent(match.substring("csrf_token=".length)) : null;
+}
+
 export async function api<T>(
   path: string,
-  options: { method?: string; body?: unknown } = {},
+  options: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const headers: Record<string, string> = {
+    ...(options.headers ?? {}),
+  };
+
+  if (options.body) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  // Automatically attach CSRF token for state-changing requests in the browser
+  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && !headers["x-csrf-token"]) {
+    const token = getCsrfCookie();
+    if (token) {
+      headers["x-csrf-token"] = token;
+    }
+  }
+
   const response = await fetch(`${BASE_URL}${path}`, {
-    method: options.method ?? "GET",
+    method,
     credentials: "include",
-    headers: options.body ? { "Content-Type": "application/json" } : undefined,
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
@@ -106,11 +132,12 @@ export const authApi = {
    * body — so there is no `token` field here to read.
    */
   login: (email: string, password: string) =>
-    api<{ user: User; schools: Membership[] }>("/api/auth/login", {
+    api<{ user: User; schools: Membership[]; csrfToken?: string }>("/api/auth/login", {
       method: "POST",
       body: { email, password },
     }),
   me: () => api<{ user: User; schools: Membership[] }>("/api/auth/me"),
+  csrf: () => api<{ csrfToken: string }>("/api/auth/csrf"),
 };
 
 /** Super Admin only. */

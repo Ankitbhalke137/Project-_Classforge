@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyAccessToken } from "@/lib/auth";
 import { ACCESS_TOKEN_COOKIE } from "@/lib/auth-cookies";
 import { UnauthorizedError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import { assertCsrfProtection, isSafeMethod } from "@/lib/csrf";
 
 export interface TenantContext {
   tenant: {
@@ -46,20 +47,26 @@ export async function withTenant<T>(
     },
     // Writes on a cold serverless connection can take longer than the 5s
     // default, and a slow transaction is rolled back with P2028.
-    { timeout: options.timeout ?? 5_000 },
+    { timeout: options.timeout ?? 15_000 },
   );
 }
 
 /**
  * Extracts and verifies the access token from request cookies or Authorization header.
  * Returns the authenticated user record with their active school memberships.
+ *
+ * Enforces CSRF protection for state-changing requests (POST, PUT, PATCH, DELETE)
+ * whenever authentication relies on browser-automatically attached cookies.
+ * Requests using stateless Authorization Bearer tokens are exempt from CSRF.
  */
 export async function authenticateRequest(request: Request | NextRequest) {
   let token: string | undefined;
+  let isCookieAuth = false;
 
   // 1. Check cookies
   if ("cookies" in request && typeof request.cookies?.get === "function") {
     token = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
+    if (token) isCookieAuth = true;
   } else {
     const cookieHeader = request.headers.get("cookie");
     if (cookieHeader) {
@@ -69,6 +76,7 @@ export async function authenticateRequest(request: Request | NextRequest) {
         .find((c) => c.startsWith(`${ACCESS_TOKEN_COOKIE}=`));
       if (match) {
         token = match.substring(ACCESS_TOKEN_COOKIE.length + 1);
+        isCookieAuth = true;
       }
     }
   }
@@ -78,6 +86,7 @@ export async function authenticateRequest(request: Request | NextRequest) {
     const authHeader = request.headers.get("authorization");
     if (authHeader && authHeader.startsWith("Bearer ")) {
       token = authHeader.substring(7).trim();
+      isCookieAuth = false;
     }
   }
 
@@ -88,6 +97,16 @@ export async function authenticateRequest(request: Request | NextRequest) {
   const payload = await verifyAccessToken(token);
   if (!payload) {
     throw new UnauthorizedError("Invalid or expired access token.");
+  }
+
+  // 3. Enforce CSRF protection for cookie-authenticated state-changing requests
+  if (isCookieAuth && !isSafeMethod(request.method ?? "GET")) {
+    const csrfCheck = assertCsrfProtection(request, {
+      expectedUserId: payload.userId,
+    });
+    if (!csrfCheck.allowed) {
+      throw new ForbiddenError(csrfCheck.reason ?? "CSRF token validation failed.");
+    }
   }
 
   const user = await prisma.user.findUnique({
