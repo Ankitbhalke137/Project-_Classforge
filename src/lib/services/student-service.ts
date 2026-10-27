@@ -706,13 +706,8 @@ export async function createStudent(
       // Adding a student must never demote a staff member. If the email already
       // holds a teacher/admin membership in this school, stop and ask for a
       // different address instead of silently overwriting the role.
-      const existingMembership = await tx.membership.findUnique({
-        where: {
-          tenantId_userId: {
-            tenantId,
-            userId: user.id,
-          },
-        },
+      const existingMembership = await tx.membership.findFirst({
+        where: { tenantId, userId: user.id },
         select: { role: true },
       });
       if (existingMembership && existingMembership.role !== "STUDENT") {
@@ -724,23 +719,16 @@ export async function createStudent(
 
       // Ensure membership exists. The role is set on create only; an existing
       // STUDENT membership is simply reactivated.
-      await tx.membership.upsert({
-        where: {
-          tenantId_userId: {
-            tenantId,
-            userId: user.id,
-          },
-        },
-        update: {
-          status: "ACTIVE",
-        },
-        create: {
-          tenantId,
-          userId: user.id,
-          role: "STUDENT",
-          status: "ACTIVE",
-        },
-      });
+      if (existingMembership) {
+        await tx.membership.update({
+          where: { tenantId_userId_role: { tenantId, userId: user.id, role: existingMembership.role } },
+          data: { status: "ACTIVE" },
+        });
+      } else {
+        await tx.membership.create({
+          data: { tenantId, userId: user.id, role: "STUDENT", status: "ACTIVE" },
+        });
+      }
     }
 
     // 4. Create the student record

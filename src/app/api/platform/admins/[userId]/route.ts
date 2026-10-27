@@ -31,8 +31,8 @@ export async function PATCH(
     const body: unknown = await request.json().catch(() => null);
     const { tenantId, role, status } = updateAdminSchema.parse(body);
 
-    const membership = await prisma.membership.findUnique({
-      where: { tenantId_userId: { tenantId, userId } },
+    const membership = await prisma.membership.findFirst({
+      where: { tenantId, userId },
       include: {
         user: { select: { id: true, name: true, email: true } },
         tenant: { select: { id: true, name: true, slug: true } },
@@ -41,7 +41,7 @@ export async function PATCH(
     if (!membership) throw new NotFoundError("That person is not a member of this school.");
 
     const updated = await prisma.membership.update({
-      where: { tenantId_userId: { tenantId, userId } },
+      where: { tenantId_userId_role: { tenantId, userId, role: membership.role } },
       data: { role, status },
     });
 
@@ -79,13 +79,13 @@ export async function DELETE(
     const tenantId = request.nextUrl.searchParams.get("tenantId");
     if (!tenantId) throw new BadRequestError("A school must be specified.");
 
-    const membership = await prisma.membership.findUnique({
-      where: { tenantId_userId: { tenantId, userId } },
+    const membership = await prisma.membership.findFirst({
+      where: { tenantId, userId },
     });
     if (!membership) throw new NotFoundError("That person is not a member of this school.");
 
     await prisma.membership.delete({
-      where: { tenantId_userId: { tenantId, userId } },
+      where: { tenantId_userId_role: { tenantId, userId, role: membership.role } },
     });
 
     return NextResponse.json({ removed: true });

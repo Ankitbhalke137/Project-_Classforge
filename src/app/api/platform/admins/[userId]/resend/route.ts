@@ -43,8 +43,8 @@ export async function POST(
     const body: unknown = await request.json().catch(() => null);
     const { tenantId } = resendSchema.parse(body);
 
-    const membership = await prisma.membership.findUnique({
-      where: { tenantId_userId: { tenantId, userId } },
+    const membership = await prisma.membership.findFirst({
+      where: { tenantId, userId },
       include: {
         user: {
           select: {

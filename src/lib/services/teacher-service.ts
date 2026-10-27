@@ -165,8 +165,8 @@ export async function createTeacher(tenantId: string, rawInput: unknown) {
 
   if (existingUser) {
     const [membership, teacherRow] = await Promise.all([
-      prisma.membership.findUnique({
-        where: { tenantId_userId: { tenantId, userId: existingUser.id } },
+      prisma.membership.findFirst({
+        where: { tenantId, userId: existingUser.id },
         select: { userId: true },
       }),
       prisma.teacher.findFirst({
