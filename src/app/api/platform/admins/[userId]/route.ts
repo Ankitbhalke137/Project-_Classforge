@@ -64,9 +64,9 @@ export async function PATCH(
 /**
  * DELETE /api/platform/admins/:userId?tenantId=…
  *
- * Removes one school membership. The `users` row is kept, because a Student or
- * Teacher record may point at it — without a membership the account simply has
- * no school to sign in to.
+ * Fully removes the user from the database so they can no longer log in
+ * anywhere. Deletes the user account, all memberships, refresh tokens, and
+ * linked student/teacher/attendance/announcement records across every school.
  */
 export async function DELETE(
   request: NextRequest,
@@ -79,16 +79,42 @@ export async function DELETE(
     const tenantId = request.nextUrl.searchParams.get("tenantId");
     if (!tenantId) throw new BadRequestError("A school must be specified.");
 
+    // Confirm the user has membership in this school
     const membership = await prisma.membership.findFirst({
       where: { tenantId, userId },
+      include: { user: { select: { id: true, platformRole: true } } },
     });
     if (!membership) throw new NotFoundError("That person is not a member of this school.");
 
-    await prisma.membership.delete({
-      where: { tenantId_userId_role: { tenantId, userId, role: membership.role } },
+    // Protect the last Super Admin from being deleted
+    if (membership.user.platformRole === "SUPER_ADMIN") {
+      const superAdminCount = await prisma.user.count({
+        where: { platformRole: "SUPER_ADMIN" },
+      });
+      if (superAdminCount <= 1) {
+        throw new BadRequestError(
+          "Cannot delete the last Super Admin. At least one must remain.",
+        );
+      }
+    }
+
+    // Full deletion: remove the user entirely so they cannot log in anywhere
+    // Delete related records in dependency order (child records first)
+    await prisma.refreshToken.deleteMany({ where: { userId } });
+    await prisma.membership.deleteMany({ where: { userId } });
+    await prisma.student.deleteMany({ where: { userId } });
+    await prisma.teacher.deleteMany({ where: { userId } });
+    await prisma.attendanceRecord.deleteMany({ where: { markedBy: userId } });
+    await prisma.announcement.deleteMany({ where: { createdBy: userId } });
+    await prisma.mark.updateMany({
+      where: { gradedBy: userId },
+      data: { gradedBy: null },
     });
 
-    return NextResponse.json({ removed: true });
+    // Delete the user account
+    await prisma.user.delete({ where: { id: userId } });
+
+    return NextResponse.json({ removed: true, deleted: true });
   } catch (error) {
     return handleApiError(error);
   }
