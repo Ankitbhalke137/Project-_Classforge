@@ -1,7 +1,5 @@
-"use client";
-
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -9,13 +7,39 @@ import { EyeIcon, EyeOffIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 
-export const dynamic = "force-dynamic";
+export default async function ResetPasswordPage({
+  searchParams,
+}: {
+  searchParams: { token?: string; email?: string };
+}) {
+  const token = searchParams.token ?? "";
+  const email = searchParams.email ?? "";
 
-export default function ResetPasswordPage() {
+  if (!token || !email) {
+    return (
+      <Card>
+        <CardHeader title="Invalid reset link" />
+        <CardBody>
+          <p>This reset link is missing required information.</p>
+          <Link href="/login" className="underline underline-offset-4">
+            Go to sign in
+          </Link>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  return <ResetPasswordForm token={token} email={email} />;
+}
+
+function ResetPasswordForm({
+  token,
+  email,
+}: {
+  token: string;
+  email: string;
+}) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token") ?? "";
-  const email = searchParams.get("email") ?? "";
 
   const [passwords, setPasswords] = useState({
     newPassword: "",
@@ -58,20 +82,6 @@ export default function ResetPasswordPage() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  if (!token || !email) {
-    return (
-      <Card>
-        <CardHeader title="Invalid reset link" />
-        <CardBody>
-          <p>This reset link is missing required information.</p>
-          <Link href="/login" className="underline underline-offset-4">
-            Go to sign in
-          </Link>
-        </CardBody>
-      </Card>
-    );
   }
 
   return (
