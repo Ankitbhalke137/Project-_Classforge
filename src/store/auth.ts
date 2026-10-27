@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { api, authApi } from "@/lib/api";
-import type { Membership, User } from "@/types";
+import type { Membership, Role, User } from "@/types";
 
 // sessionStorage, not localStorage: closing the tab signs you out.
 const STORAGE_KEY = "classforge.session";
@@ -10,12 +10,18 @@ const STORAGE_KEY = "classforge.session";
 interface AuthState {
   user: User | null;
   schools: Membership[];
+  /** The school slug the user has chosen to work in (set at login or via the school switcher). */
+  activeSchoolSlug: string | null;
+  /** The role the user has chosen inside the active school (when they hold multiple roles there). */
+  activeRole: Role | null;
   /** False until sessionStorage has been read and /api/auth/me has validated the session. */
   ready: boolean;
 
   restore: () => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Pick which school + role to work in. Used by the login role selector and the school switcher. */
+  setActiveContext: (schoolSlug: string | null, role: Role | null) => void;
   /** Clears the first-login flag after a successful password change. */
   passwordChanged: () => void;
 }
@@ -23,6 +29,8 @@ interface AuthState {
 export const useAuth = create<AuthState>((set) => ({
   user: null,
   schools: [],
+  activeSchoolSlug: null,
+  activeRole: null,
   ready: false,
 
   // Called once on app start, before any guard makes a decision.
@@ -33,9 +41,13 @@ export const useAuth = create<AuthState>((set) => ({
   restore: async () => {
     const saved = sessionStorage.getItem(STORAGE_KEY);
     if (saved) {
+      let restoredSchoolSlug: string | null = null;
+      let restoredRole: Role | null = null;
       try {
-        const { user, schools } = JSON.parse(saved);
-        set({ user, schools });
+        const { user, schools, activeSchoolSlug, activeRole } = JSON.parse(saved);
+        restoredSchoolSlug = activeSchoolSlug ?? null;
+        restoredRole = activeRole ?? null;
+        set({ user, schools, activeSchoolSlug: restoredSchoolSlug, activeRole: restoredRole });
       } catch {
         // Malformed storage is ignored.
       }
@@ -44,14 +56,16 @@ export const useAuth = create<AuthState>((set) => ({
       // or expired, clear the stale client copy.
       try {
         const { user: meUser, schools: meSchools } = await authApi.me();
-        set({ user: meUser, schools: meSchools });
+        // Re-derive roles from memberships.
+        const roles = meSchools.map((m) => m.role);
+        set({ user: { ...meUser, roles }, schools: meSchools });
         sessionStorage.setItem(
           STORAGE_KEY,
-          JSON.stringify({ user: meUser, schools: meSchools }),
+          JSON.stringify({ user: { ...meUser, roles }, schools: meSchools, activeSchoolSlug: restoredSchoolSlug, activeRole: restoredRole }),
         );
       } catch {
         sessionStorage.removeItem(STORAGE_KEY);
-        set({ user: null, schools: [] });
+        set({ user: null, schools: [], activeSchoolSlug: null, activeRole: null });
       }
     }
 
@@ -60,11 +74,14 @@ export const useAuth = create<AuthState>((set) => ({
 
   login: async (email, password) => {
     const result = await authApi.login(email, password);
+    // Re-derive roles from memberships for convenience.
+    const roles = result.schools.map((m) => m.role);
+    const userWithRoles = { ...result.user, roles };
     sessionStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ user: result.user, schools: result.schools }),
+      JSON.stringify({ user: userWithRoles, schools: result.schools, activeSchoolSlug: null, activeRole: null }),
     );
-    set({ user: result.user, schools: result.schools });
+    set({ user: userWithRoles, schools: result.schools, activeSchoolSlug: null, activeRole: null });
   },
 
   logout: async () => {
@@ -72,8 +89,24 @@ export const useAuth = create<AuthState>((set) => ({
       await api("/api/auth/logout", { method: "POST" });
     } finally {
       sessionStorage.removeItem(STORAGE_KEY);
-      set({ user: null, schools: [], ready: true });
+      set({ user: null, schools: [], activeSchoolSlug: null, activeRole: null, ready: true });
     }
+  },
+
+  setActiveContext: (schoolSlug, role) => {
+    set((state) => {
+      const next = { ...state, activeSchoolSlug: schoolSlug, activeRole: role };
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          user: state.user,
+          schools: state.schools,
+          activeSchoolSlug: schoolSlug,
+          activeRole: role,
+        }),
+      );
+      return next;
+    });
   },
 
   passwordChanged: () => {
@@ -82,7 +115,7 @@ export const useAuth = create<AuthState>((set) => ({
       const user = { ...state.user, mustChangePassword: false };
       sessionStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ user, schools: state.schools }),
+        JSON.stringify({ user, schools: state.schools, activeSchoolSlug: state.activeSchoolSlug, activeRole: state.activeRole }),
       );
       return { user };
     });

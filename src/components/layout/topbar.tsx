@@ -16,17 +16,25 @@ import { schoolApi } from "@/lib/api";
 import { useApi, useMembership } from "@/lib/hooks";
 import { useAuth } from "@/store/auth";
 import { type Announcement, ROLE_LABELS } from "@/types";
+import { loginContexts } from "@/lib/nav";
 
 /**
  * Lets one account move between the schools it belongs to. Switching is just
  * a navigation — the URL carries the school, so nothing needs to be reset.
+ *
+ * When the user holds multiple roles in the same school (e.g. TEACHER and
+ * SCHOOL_ADMIN), each combination is listed separately so they can pick the
+ * one they want to work under.
  */
 export function SchoolSwitcher() {
   const router = useRouter();
   const schools = useAuth((state) => state.schools);
+  const setActiveContext = useAuth((state) => state.setActiveContext);
   const current = useMembership();
 
   if (schools.length === 0) return null;
+
+  const contexts = loginContexts(schools);
 
   return (
     <Dropdown
@@ -49,15 +57,21 @@ export function SchoolSwitcher() {
           <ChevronDownIcon width={16} height={16} className="shrink-0 text-muted" />
         </span>
       }
-      items={schools.map((school) => ({
-        key: school.schoolId,
-        label: school.schoolName,
-        description: ROLE_LABELS[school.role],
-        onSelect: () => router.push(`/${school.schoolSlug}/dashboard`),
+      items={contexts.map((ctx) => ({
+        key: `${ctx.schoolSlug}|${ctx.role}`,
+        label: ctx.schoolName,
+        description: `${ROLE_LABELS[ctx.role]}${ctx.status === "SUSPENDED" ? " · suspended" : ""}`,
+        onSelect: () => {
+          setActiveContext(ctx.schoolSlug, ctx.role);
+          router.push(`/${ctx.schoolSlug}/dashboard`);
+        },
         trailing:
-          school.schoolId === current?.schoolId ? (
+          current &&
+          current.schoolSlug === ctx.schoolSlug &&
+          current.role === ctx.role ? (
             <CheckIcon width={16} height={16} className="shrink-0 text-secondary" />
           ) : null,
+        disabled: ctx.status === "SUSPENDED",
       }))}
     />
   );

@@ -13,7 +13,7 @@ import {
   TeachersIcon,
 } from "@/components/ui/icons";
 import { canAccessArea, type SchoolArea } from "@/lib/roles";
-import type { Membership, Role, User } from "@/types";
+import type { Membership, Role, School, User } from "@/types";
 
 export interface NavItem {
   label: string;
@@ -88,6 +88,30 @@ export function landingPath(user: User | null, schools: Membership[]): string {
   if (!user) return "/login";
   if (user.isSuperAdmin) return "/platform";
 
-  const firstSchool = schools[0];
-  return firstSchool ? `/${firstSchool.schoolSlug}/dashboard` : "/no-access";
+  const active = schools.length > 0 ? schools[0] : null;
+  return active ? `/${active.schoolSlug}/dashboard` : "/no-access";
+}
+
+/** All distinct (school, role) combinations the user can sign in as,
+ * de-duplicated so the same school with two roles shows both options. */
+export function loginContexts(schools: Membership[]): { schoolSlug: string; schoolName: string; role: Role; status: School["status"] }[] {
+  const seen = new Set<string>();
+  return schools
+    .filter((s) => {
+      const key = `${s.schoolSlug}|${s.role}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((s) => ({
+      schoolSlug: s.schoolSlug,
+      schoolName: s.schoolName,
+      role: s.role,
+      status: s.status,
+    }));
+}
+
+/** True when the user has more than one sign-in context to choose from. */
+export function needsSchoolSelection(schools: Membership[]): boolean {
+  return loginContexts(schools).length > 1;
 }

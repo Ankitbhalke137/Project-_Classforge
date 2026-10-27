@@ -90,7 +90,7 @@ model Membership {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([tenantId, userId])
+  @@id([tenantId, userId, role])
   @@index([userId, status])
   @@map("memberships")
 }
