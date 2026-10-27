@@ -260,7 +260,6 @@ async function main() {
     // render for.
     const schoolSlug = `ui-school-${Date.now().toString(36)}`;
     const adminEmail = `ui-admin-${Date.now().toString(36)}@example.com`;
-    const adminPassword = "UiCheck@12345";
 
     const created = await fetch(`${BASE_URL}/api/platform/schools`, {
       method: "POST",

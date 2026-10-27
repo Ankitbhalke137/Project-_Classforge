@@ -88,7 +88,9 @@ function ParentsDirectory({ schoolSlug }: { schoolSlug: string }) {
                   <TR key={p.id}>
                     <TD>
                       <span className="font-semibold text-primary">{p.name}</span>
-                      <span className="block text-xs text-body">{p.email}</span>
+                      <span className="block text-xs text-body">
+                        {p.email || "No email on file"}
+                      </span>
                     </TD>
                     <TD>{p.phone || "—"}</TD>
                     <TD>{p.occupation || "Guardian"}</TD>

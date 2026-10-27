@@ -107,13 +107,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
           name,
           email,
           passwordHash: await hash(temporaryPassword, 10),
+          mustChangePassword: true,
         },
       });
     } else if (!user.passwordHash) {
       temporaryPassword = generateTemporaryPassword();
       user = await prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash: await hash(temporaryPassword, 10) },
+        data: {
+          passwordHash: await hash(temporaryPassword, 10),
+          mustChangePassword: true,
+        },
       });
     }
 

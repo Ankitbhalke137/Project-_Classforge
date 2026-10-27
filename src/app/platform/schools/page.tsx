@@ -363,6 +363,7 @@ function ProvisionSchoolModal({
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; slug?: string }>({});
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<School | null>(null);
 
@@ -371,6 +372,7 @@ function ProvisionSchoolModal({
     setSlug("");
     setSlugEdited(false);
     setError(null);
+    setFieldErrors({});
     setBusy(false);
     setCreated(null);
   }
@@ -382,23 +384,40 @@ function ProvisionSchoolModal({
 
   function onNameChange(value: string) {
     setName(value);
+    setFieldErrors((current) => ({ ...current, name: undefined }));
     // Keep following the name until the user takes over the slug themselves.
     if (!slugEdited) setSlug(slugify(value));
   }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
+
+    const next: { name?: string; slug?: string } = {};
+    if (name.trim().length < 2) next.name = "Enter the school name.";
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug.trim())) {
+      next.slug = "Use lowercase letters, numbers and single dashes.";
+    } else if (slug.trim().length > 100) {
+      next.slug = "Keep the slug to 100 characters or fewer.";
+    }
+    setFieldErrors(next);
+    if (Object.keys(next).length > 0) return;
+
     setBusy(true);
     setError(null);
 
     try {
-      const school = await platformApi.createSchool(name, slug);
+      const school = await platformApi.createSchool(name.trim(), slug.trim());
       setCreated(school);
       onCreated();
     } catch (err) {
       if (err instanceof ApiError) {
-        const fieldMessage = Object.values(err.fields)[0];
-        setError(fieldMessage ?? err.message);
+        setFieldErrors({
+          name: err.fields.name,
+          slug: err.fields.slug,
+        });
+        if (!err.fields.name && !err.fields.slug) {
+          setError(err.message);
+        }
       } else {
         setError("Could not create the school.");
       }
@@ -458,6 +477,7 @@ function ProvisionSchoolModal({
             label="School name"
             required
             value={name}
+            error={fieldErrors.name}
             onChange={(event) => onNameChange(event.target.value)}
             placeholder="Greenwood High"
           />
@@ -465,9 +485,11 @@ function ProvisionSchoolModal({
             label="URL slug"
             required
             value={slug}
+            error={fieldErrors.slug}
             onChange={(event) => {
               setSlugEdited(true);
               setSlug(event.target.value);
+              setFieldErrors((current) => ({ ...current, slug: undefined }));
             }}
             placeholder="greenwood"
             hint="Lowercase letters, numbers and hyphens. This becomes /{slug}."

@@ -19,7 +19,6 @@ const PERIODS = [
   { period: 5, startTime: "15:20", endTime: "16:35", label: "Period 5" },
 ];
 
-const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"] as const;
 
 function fakeEmail(name: string) {
   return `${name.toLowerCase().replace(/\s+/g, ".")}@wrong.example`;
@@ -86,7 +85,7 @@ async function main() {
   });
 
   /* ---------- 3. Subjects ---------- */
-  const subjects = await prisma.subject.createMany({
+  await prisma.subject.createMany({
     data: [
       { tenantId: tenant.id, classId: schoolClass.id, name: "Operating System", code: "OS" },
       { tenantId: tenant.id, classId: schoolClass.id, name: "Python for Data Science", code: "PDS" },
@@ -104,7 +103,7 @@ async function main() {
   const byName = new Map(subjList.map((s) => [s.name, s]));
 
   /* ---------- 4. Teachers (placeholder / wrong emails) ---------- */
-  const teachers = await prisma.teacher.createMany({
+  await prisma.teacher.createMany({
     data: [
       { tenantId: tenant.id, firstName: "Ram", lastName: "", employeeNo: "TCH001" },
       { tenantId: tenant.id, firstName: "Rohit", lastName: "", employeeNo: "TCH002" },

@@ -6,7 +6,8 @@ import { getFeeSummary } from "@/lib/services/fee-service";
 /**
  * GET /api/t/:tenantSlug/fees/summary
  *
- * Calculates real totals for billing, collection, and overdue dues.
+ * Real totals for billing, collection and overdue dues. The scope comes from
+ * the session, so a parent cannot request another family's totals.
  */
 export async function GET(
   request: NextRequest,
@@ -14,10 +15,15 @@ export async function GET(
 ) {
   try {
     const { tenantSlug } = await context.params;
-    const { tenant } = await resolveTenantContext(request, tenantSlug);
+    const { tenant, membership } = await resolveTenantContext(request, tenantSlug, [
+      "SCHOOL_ADMIN",
+      "PARENT",
+    ]);
 
-    const email = request.nextUrl.searchParams.get("email") ?? undefined;
-    const summary = await getFeeSummary(tenantSlug, tenant.id, email);
+    const summary = await getFeeSummary(tenant.id, {
+      role: membership.role,
+      userId: membership.userId,
+    });
 
     return NextResponse.json(summary);
   } catch (error) {

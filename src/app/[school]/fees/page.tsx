@@ -1,9 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { z } from "zod";
 import { RequireArea } from "@/components/auth/guards";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input, Select } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import { PaginationBar } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
@@ -14,12 +18,25 @@ import {
   SearchIcon,
   VerifiedIcon,
 } from "@/components/ui/icons";
-import { schoolApi } from "@/lib/api";
-import { useApi, useDebounced, useMembership, useRole } from "@/lib/hooks";
+import { ApiError, schoolApi } from "@/lib/api";
+import {
+  useApi,
+  useDebounced,
+  useMembership,
+  useRole,
+  useSchoolCalendar,
+} from "@/lib/hooks";
 import { canPerform } from "@/lib/roles";
-import { useAuth } from "@/store/auth";
 import { cn, formatNumber } from "@/lib/utils";
-import { FEE_STATUSES, type FeeInvoice, type FeeStatus, type FeeSummary } from "@/types";
+import {
+  FEE_STATUSES,
+  FEE_TYPES,
+  type FeeInvoice,
+  type FeeStatus,
+  type FeeSummary,
+  type FeeType,
+  type Student,
+} from "@/types";
 
 /**
  * Fee management and invoices.
@@ -30,28 +47,46 @@ import { FEE_STATUSES, type FeeInvoice, type FeeStatus, type FeeSummary } from "
  */
 export default function FeesPage() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
-  const email = useAuth((state) => state.user?.email);
+  const role = useRole();
 
-  // Only a school admin reads the whole ledger; a guardian and a student are
-  // served their own records and should not be told about the school's.
-  const wholeSchool = canPerform(useRole(), "viewAllFees");
+  // Only a school admin reads the whole ledger; a guardian is served their own
+  // records by the server and is not told about the school's.
+  const wholeSchool = canPerform(role, "viewAllFees");
 
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<FeeStatus | "">("");
   const [search, setSearch] = useState("");
   const query = useDebounced(search);
 
-  const summary = useApi(() => schoolApi.getFeeSummary(schoolSlug, email), [schoolSlug, email]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [paying, setPaying] = useState<FeeInvoice | null>(null);
+
+  const summary = useApi(() => schoolApi.getFeeSummary(schoolSlug), [schoolSlug]);
   const invoices = useApi(
     () =>
       schoolApi.listFees(schoolSlug, {
         page,
         status: status || undefined,
         search: query,
-        email,
       }),
-    [schoolSlug, page, status, query, email],
+    [schoolSlug, page, status, query],
   );
+
+  const students = useApi(
+    () =>
+      // Only the admin's invoice form needs the roster. A parent has no
+      // business calling the students endpoint just because the page mounted.
+      wholeSchool
+        ? schoolApi.listStudents(schoolSlug, { limit: 100, status: "ACTIVE" })
+        : Promise.resolve(null),
+    [schoolSlug, wholeSchool],
+  );
+  const { calendar } = useSchoolCalendar();
+
+  function refreshLedger() {
+    summary.reload();
+    invoices.reload();
+  }
 
   return (
     <RequireArea area="fees">
@@ -67,6 +102,13 @@ export default function FeesPage() {
             wholeSchool
               ? "Track school fee billing, collection progress and outstanding dues across every class."
               : "Invoices raised for your own records, and what is still outstanding."
+          }
+          action={
+            wholeSchool ? (
+              <Button variant="accent" onClick={() => setCreateOpen(true)}>
+                New invoice
+              </Button>
+            ) : undefined
           }
         />
 
@@ -142,11 +184,17 @@ export default function FeesPage() {
                     <TH className="text-right">Balance</TH>
                     <TH className="whitespace-nowrap">Due date</TH>
                     <TH>Status</TH>
+                    {wholeSchool ? <TH className="text-right">Actions</TH> : null}
                   </TR>
                 </THead>
                 <TBody>
                   {invoices.data.data.map((invoice) => (
-                    <InvoiceRow key={invoice.id} invoice={invoice} schoolSlug={schoolSlug} />
+                    <InvoiceRow
+                      key={invoice.id}
+                      invoice={invoice}
+                      canManage={wholeSchool}
+                      onRecordPayment={() => setPaying(invoice)}
+                    />
                   ))}
                 </TBody>
               </Table>
@@ -154,6 +202,32 @@ export default function FeesPage() {
             </>
           )}
         </Card>
+
+        {wholeSchool ? (
+          <>
+            <NewInvoiceModal
+              open={createOpen}
+              schoolSlug={schoolSlug}
+              students={students.data?.data ?? []}
+              terms={calendar?.terms.map((term) => term.label) ?? []}
+              onClose={() => setCreateOpen(false)}
+              onSaved={() => {
+                setCreateOpen(false);
+                refreshLedger();
+              }}
+            />
+            <RecordPaymentModal
+              key={paying?.id ?? "none"}
+              invoice={paying}
+              schoolSlug={schoolSlug}
+              onClose={() => setPaying(null)}
+              onSaved={() => {
+                setPaying(null);
+                refreshLedger();
+              }}
+            />
+          </>
+        ) : null}
       </div>
     </RequireArea>
   );
@@ -289,15 +363,17 @@ function StatusTab({
   );
 }
 
-function InvoiceRow({ invoice, schoolSlug }: { invoice: FeeInvoice; schoolSlug: string }) {
+function InvoiceRow({
+  invoice,
+  canManage,
+  onRecordPayment,
+}: {
+  invoice: FeeInvoice;
+  canManage: boolean;
+  onRecordPayment: () => void;
+}) {
   const balance = invoice.amount - invoice.amountPaid;
   const overdue = invoice.status === "OVERDUE";
-
-  // The fixture ids are namespaced by tenant, and the tenant is already in the
-  // URL and the switcher — dropping it makes the reference readable.
-  const reference = invoice.id.startsWith(`${schoolSlug}_`)
-    ? invoice.id.slice(schoolSlug.length + 1)
-    : invoice.id;
 
   return (
     <TR>
@@ -309,7 +385,7 @@ function InvoiceRow({ invoice, schoolSlug }: { invoice: FeeInvoice; schoolSlug: 
             overdue ? "font-semibold text-danger-600" : "font-semibold text-primary",
           )}
         >
-          {reference}
+          {invoice.invoiceNo}
         </span>
       </TD>
 
@@ -344,7 +420,351 @@ function InvoiceRow({ invoice, schoolSlug }: { invoice: FeeInvoice; schoolSlug: 
       <TD>
         <Badge tone={STATUS_TONE[invoice.status]}>{STATUS_LABEL[invoice.status]}</Badge>
       </TD>
+      {canManage ? (
+        <TD className="text-right">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onRecordPayment}
+            disabled={invoice.status === "PAID" || balance <= 0}
+          >
+            Record payment
+          </Button>
+        </TD>
+      ) : null}
     </TR>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * New invoice
+ * ------------------------------------------------------------------ */
+
+const invoiceSchema = z.object({
+  studentId: z.string().uuid("Choose a student."),
+  feeType: z.enum(FEE_TYPES, { message: "Choose a fee type." }),
+  term: z.string().trim().min(1, "Choose a term.").max(50),
+  amount: z.coerce
+    .number({ message: "Enter an amount." })
+    .positive("Amount must be greater than zero.")
+    .max(10_000_000, "That amount is too large."),
+  dueDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a due date."),
+});
+
+type InvoiceFields = z.infer<typeof invoiceSchema>;
+
+function inThirtyDays(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 30);
+  return date.toISOString().slice(0, 10);
+}
+
+function NewInvoiceModal({
+  open,
+  schoolSlug,
+  students,
+  terms,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  schoolSlug: string;
+  students: Student[];
+  terms: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState<InvoiceFields>({
+    studentId: "",
+    feeType: "Tuition",
+    term: "",
+    amount: 0,
+    dueDate: inThirtyDays(),
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function reset() {
+    setForm({
+      studentId: "",
+      feeType: "Tuition",
+      term: "",
+      amount: 0,
+      dueDate: inThirtyDays(),
+    });
+    setErrors({});
+    setFormError(null);
+  }
+
+  function close() {
+    reset();
+    onClose();
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+
+    const parsed = invoiceSchema.safeParse(form);
+    if (!parsed.success) {
+      const next: Record<string, string> = {};
+      for (const issue of parsed.error.issues) {
+        const key = String(issue.path[0] ?? "form");
+        if (!next[key]) next[key] = issue.message;
+      }
+      setErrors(next);
+      return;
+    }
+
+    setBusy(true);
+    setErrors({});
+    setFormError(null);
+
+    try {
+      await schoolApi.createFeeInvoice(schoolSlug, {
+        studentId: parsed.data.studentId,
+        feeType: parsed.data.feeType,
+        term: parsed.data.term,
+        amount: parsed.data.amount,
+        dueDate: parsed.data.dueDate,
+      });
+      reset();
+      onSaved();
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrors(error.fields);
+        setFormError(Object.keys(error.fields).length ? null : error.message);
+      } else {
+        setFormError("Could not raise this invoice. Try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title="Raise a fee invoice"
+      description="One bill for one student, fee head and term. Amounts are in rupees."
+      footer={
+        <>
+          <Button variant="secondary" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit" form="new-invoice-form" isLoading={busy}>
+            Create invoice
+          </Button>
+        </>
+      }
+    >
+      <form id="new-invoice-form" onSubmit={submit} className="space-y-4">
+        <Select
+          label="Student"
+          value={form.studentId}
+          error={errors.studentId}
+          options={[
+            {
+              value: "",
+              label: students.length ? "Choose a student" : "No students enrolled yet",
+            },
+            ...students.map((student) => ({
+              value: student.id,
+              label: `${student.name} · ${student.className || "Unassigned"}`,
+            })),
+          ]}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, studentId: event.target.value }))
+          }
+        />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Select
+            label="Fee type"
+            value={form.feeType}
+            error={errors.feeType}
+            options={FEE_TYPES.map((value) => ({ value, label: value }))}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                feeType: event.target.value as FeeType,
+              }))
+            }
+          />
+          {terms.length > 0 ? (
+            <Select
+              label="Term"
+              value={form.term}
+              error={errors.term}
+              options={[
+                { value: "", label: "Choose a term" },
+                ...terms.map((term) => ({ value: term, label: term })),
+              ]}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, term: event.target.value }))
+              }
+            />
+          ) : (
+            <Input
+              label="Term"
+              value={form.term}
+              error={errors.term}
+              placeholder="Term 1"
+              onChange={(event) =>
+                setForm((current) => ({ ...current, term: event.target.value }))
+              }
+            />
+          )}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Amount"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.amount || ""}
+            error={errors.amount}
+            placeholder="15000"
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                amount: event.target.value === "" ? 0 : Number(event.target.value),
+              }))
+            }
+          />
+          <Input
+            label="Due date"
+            type="date"
+            value={form.dueDate}
+            error={errors.dueDate}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, dueDate: event.target.value }))
+            }
+          />
+        </div>
+
+        {formError ? (
+          <p role="alert" className="text-sm text-danger-600">
+            {formError}
+          </p>
+        ) : null}
+      </form>
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Record payment
+ * ------------------------------------------------------------------ */
+
+const paymentSchema = z.object({
+  amount: z.coerce
+    .number({ message: "Enter an amount." })
+    .positive("Payment must be greater than zero."),
+});
+
+function RecordPaymentModal({
+  invoice,
+  schoolSlug,
+  onClose,
+  onSaved,
+}: {
+  invoice: FeeInvoice | null;
+  schoolSlug: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [amount, setAmount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const balance = invoice ? invoice.amount - invoice.amountPaid : 0;
+
+  function close() {
+    setAmount(0);
+    setError(null);
+    setFormError(null);
+    onClose();
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!invoice) return;
+
+    const parsed = paymentSchema.safeParse({ amount });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Enter an amount.");
+      return;
+    }
+    if (parsed.data.amount > balance) {
+      setError(`The outstanding balance is ${formatMoney(balance)}.`);
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setFormError(null);
+
+    try {
+      await schoolApi.recordFeePayment(schoolSlug, invoice.id, parsed.data.amount);
+      setAmount(0);
+      onSaved();
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        setError(caught.fields.amount ?? null);
+        setFormError(caught.fields.amount ? null : caught.message);
+      } else {
+        setFormError("Could not record this payment. Try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={invoice !== null}
+      onClose={close}
+      title="Record a payment"
+      description={
+        invoice
+          ? `${invoice.invoiceNo} · ${invoice.studentName} · balance ${formatMoney(balance)}`
+          : undefined
+      }
+      footer={
+        <>
+          <Button variant="secondary" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit" form="record-payment-form" isLoading={busy}>
+            Record payment
+          </Button>
+        </>
+      }
+    >
+      <form id="record-payment-form" onSubmit={submit} className="space-y-4">
+        <Input
+          label="Amount received"
+          type="number"
+          min="0"
+          step="0.01"
+          value={amount || ""}
+          error={error ?? undefined}
+          placeholder="0"
+          onChange={(event) => setAmount(Number(event.target.value) || 0)}
+        />
+        {formError ? (
+          <p role="alert" className="text-sm text-danger-600">
+            {formError}
+          </p>
+        ) : null}
+      </form>
+    </Modal>
   );
 }
 

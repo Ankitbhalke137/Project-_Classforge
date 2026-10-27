@@ -16,6 +16,8 @@ interface AuthState {
   restore: () => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Clears the first-login flag after a successful password change. */
+  passwordChanged: () => void;
 }
 
 export const useAuth = create<AuthState>((set) => ({
@@ -66,11 +68,23 @@ export const useAuth = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-  try {
-    await api("/api/auth/logout", { method: "POST" });
-  } finally {
-    sessionStorage.removeItem(STORAGE_KEY);
-    set({ user: null, schools: [], ready: true });
-  }
-},
+    try {
+      await api("/api/auth/logout", { method: "POST" });
+    } finally {
+      sessionStorage.removeItem(STORAGE_KEY);
+      set({ user: null, schools: [], ready: true });
+    }
+  },
+
+  passwordChanged: () => {
+    set((state) => {
+      if (!state.user) return state;
+      const user = { ...state.user, mustChangePassword: false };
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ user, schools: state.schools }),
+      );
+      return { user };
+    });
+  },
 }));

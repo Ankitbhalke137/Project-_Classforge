@@ -680,13 +680,17 @@ export async function createStudent(
             name: `${input.firstName} ${input.lastName}`.trim(),
             email,
             passwordHash: candidateHash!,
+            mustChangePassword: true,
           },
         });
       } else if (!user.passwordHash) {
         temporaryPassword = candidatePassword;
         user = await tx.user.update({
           where: { id: user.id },
-          data: { passwordHash: candidateHash! },
+          data: {
+            passwordHash: candidateHash!,
+            mustChangePassword: true,
+          },
         });
       }
 
@@ -1145,7 +1149,7 @@ export async function resendStudentCredentials(
 
     await tx.user.update({
       where: { id: student.user.id },
-      data: { passwordHash },
+      data: { passwordHash, mustChangePassword: true },
     });
 
     return {

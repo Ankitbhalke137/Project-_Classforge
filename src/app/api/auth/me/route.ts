@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
         name: user.name,
         email: user.email,
         isSuperAdmin,
+        mustChangePassword: user.mustChangePassword,
       },
       schools,
     });

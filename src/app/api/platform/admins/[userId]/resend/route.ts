@@ -52,6 +52,7 @@ export async function POST(
             name: true,
             email: true,
             passwordHash: true,
+            mustChangePassword: true,
             platformRole: true,
           },
         },
@@ -70,11 +71,15 @@ export async function POST(
     }
 
     const previousHash = membership.user.passwordHash;
+    const previousMustChange = membership.user.mustChangePassword;
     const temporaryPassword = randomBytes(12).toString("base64url");
 
     await prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: await hash(temporaryPassword, 10) },
+      data: {
+        passwordHash: await hash(temporaryPassword, 10),
+        mustChangePassword: true,
+      },
     });
 
     const result = await sendCredentialsEmail({
@@ -89,7 +94,10 @@ export async function POST(
     if (!result.sent) {
       await prisma.user.update({
         where: { id: userId },
-        data: { passwordHash: previousHash },
+        data: {
+          passwordHash: previousHash,
+          mustChangePassword: previousMustChange,
+        },
       });
 
       return NextResponse.json(

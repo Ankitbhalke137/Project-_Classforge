@@ -21,16 +21,34 @@ export async function GET(
     const cleanId = id.replace(/^par_/, "");
     const isUuid = UUID.test(cleanId);
 
+    // The directory encodes the guardian key as base64url; decode it back to
+    // the name + phone pair the student rows carry. A raw UUID is still
+    // accepted so older links keep working.
+    let guardianName: string | null = null;
+    let guardianPhone: string | null = null;
+    if (!isUuid) {
+      const decoded = Buffer.from(cleanId, "base64url").toString("utf8");
+      if (decoded.includes("|")) {
+        const [name, phone] = decoded.split("|");
+        guardianName = name || null;
+        guardianPhone = phone || null;
+      }
+    }
+
     const students = await prisma.student.findMany({
       where: {
         tenantId: tenant.id,
         OR: [
           ...(isUuid ? [{ id: cleanId }, { userId: cleanId }] : []),
-          { guardianPhone: cleanId },
-          { guardianName: { contains: cleanId, mode: "insensitive" } },
+          ...(guardianPhone
+            ? [{ guardianPhone }]
+            : guardianName
+              ? [{ guardianName: { equals: guardianName, mode: "insensitive" as const } }]
+              : []),
         ],
       },
       include: {
+        user: { select: { email: true } },
         enrolments: {
           where: { status: "ACTIVE" },
           take: 1,
@@ -50,20 +68,19 @@ export async function GET(
     const formatted = students.map((st) => ({
       id: st.id,
       name: `${st.firstName} ${st.lastName}`.trim(),
-      email: `${st.firstName.toLowerCase()}.${st.lastName.toLowerCase()}@${tenantSlug}.edu`,
+      // A student may have no login; their linked account is the only real
+      // email we hold. Do not derive one from their name.
+      email: st.user?.email ?? "",
       admissionNo: st.admissionNo,
       className: st.enrolments[0]
         ? `${st.enrolments[0].section.schoolClass.name} - ${st.enrolments[0].section.name}`
         : "",
-      status: "ACTIVE" as const,
+      status: st.status === "ACTIVE" ? ("ACTIVE" as const) : ("INACTIVE" as const),
       classId: st.enrolments[0]?.sectionId ?? "",
       grade: st.enrolments[0]?.section.schoolClass.name ?? "",
       section: st.enrolments[0]?.section.name ?? "",
-      gender: "OTHER" as const,
-      dateOfBirth: st.dateOfBirth?.toISOString() ?? "",
-      phone: st.phone ?? "",
-      address: "",
-      bloodGroup: "",
+      dateOfBirth: st.dateOfBirth?.toISOString() ?? null,
+      phone: st.phone,
       parentId: id,
       admittedOn: st.createdAt.toISOString(),
     }));

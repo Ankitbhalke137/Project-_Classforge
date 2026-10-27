@@ -484,12 +484,6 @@ function ClassDetailModal({
             periods={periods.data ?? []}
             periodsLoading={periods.loading}
             canManage={canManage}
-            onChanged={(message) => {
-              setNotice(message);
-              setError(null);
-              onChanged(message);
-            }}
-            onError={setError}
           />
         ) : null}
       </div>
@@ -536,8 +530,16 @@ function ClassDetailsTab({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+
+    const next: Record<string, string> = {};
+    if (!name.trim()) next.name = "Class name is required.";
+    if (capacity !== "" && (!Number.isFinite(Number(capacity)) || Number(capacity) < 0)) {
+      next.capacity = "Capacity cannot be negative.";
+    }
+    setFields(next);
+    if (Object.keys(next).length > 0) return;
+
     setBusy(true);
-    setFields({});
     try {
       await schoolApi.updateClass(schoolSlug, classId, {
         name,
@@ -634,7 +636,10 @@ function SectionsTab({
 
   async function add(event: React.FormEvent) {
     event.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      onError("Enter a section name.");
+      return;
+    }
     setBusy(true);
     try {
       await schoolApi.addSection(schoolSlug, classId, name.trim());
@@ -787,7 +792,14 @@ function SubjectsTab({
 
   async function add(event: React.FormEvent) {
     event.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      onError("Enter a subject name.");
+      return;
+    }
+    if (code.trim().length > 30) {
+      onError("Keep the subject code to 30 characters or fewer.");
+      return;
+    }
     setBusy(true);
     try {
       await schoolApi.createSubject(schoolSlug, {
@@ -923,7 +935,10 @@ function TeachersTab({
 
   async function add(event: React.FormEvent) {
     event.preventDefault();
-    if (!sectionId || !subjectId || !teacherId) return;
+    if (!sectionId || !subjectId || !teacherId) {
+      onError("Choose a section, a subject and a teacher.");
+      return;
+    }
     setBusy(true);
     try {
       await schoolApi.createTeachingAssignment(schoolSlug, {
@@ -1067,8 +1082,6 @@ function TimetableTab({
   periods,
   periodsLoading,
   canManage,
-  onChanged,
-  onError,
 }: {
   schoolSlug: string;
   sections: SchoolClass[];
@@ -1077,8 +1090,6 @@ function TimetableTab({
   periods: TimetablePeriod[];
   periodsLoading: boolean;
   canManage: boolean;
-  onChanged: (message: string) => void;
-  onError: (message: string) => void;
 }) {
   const [sectionId, setSectionId] = useState(sections[0]?.id ?? "");
 
@@ -1252,9 +1263,17 @@ function ClassFormModal({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+
+    const next: Record<string, string> = {};
+    if (!name.trim()) next.name = "Class name is required.";
+    if (capacity !== "" && (!Number.isFinite(Number(capacity)) || Number(capacity) < 0)) {
+      next.capacity = "Capacity cannot be negative.";
+    }
+    setFields(next);
+    if (Object.keys(next).length > 0) return;
+
     setBusy(true);
     setFormError(null);
-    setFields({});
 
     try {
       if (mode === "create") {

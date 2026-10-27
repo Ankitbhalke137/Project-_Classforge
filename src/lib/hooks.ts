@@ -6,7 +6,6 @@ import { schoolApi } from "@/lib/api";
 import {
   canAccessArea,
   canPerform,
-  scopeFor,
   type Action,
   type SchoolArea,
 } from "@/lib/roles";

@@ -49,7 +49,6 @@ import type {
  * own host.
  * ------------------------------------------------------------------ */
 
-export const MOCKS_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOCKS !== "false";
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 /* ------------------------------------------------------------------ *
@@ -688,9 +687,9 @@ export const schoolApi = {
 
   /* --- Fees --- */
   /**
-   * `email` tells the server who is asking. A guardian and a student reach this
-   * screen too, and the server narrows the ledger to their own records — the
-   * screen must not decide that for itself.
+   * The ledger is scoped by the session on the server: a School Admin sees the
+   * whole school, a parent only their own children. The client must never send
+   * an email to name the viewer.
    */
   listFees: (
     schoolSlug: string,
@@ -700,11 +699,26 @@ export const schoolApi = {
       status?: string;
       classId?: string;
       term?: string;
-      email?: string;
     } = {},
   ) => api<Paginated<FeeInvoice>>(withQuery(`/api/t/${schoolSlug}/fees`, params)),
-  getFeeSummary: (schoolSlug: string, email?: string) =>
-    api<FeeSummary>(withQuery(`/api/t/${schoolSlug}/fees/summary`, { email })),
+  getFeeSummary: (schoolSlug: string) =>
+    api<FeeSummary>(`/api/t/${schoolSlug}/fees/summary`),
+  createFeeInvoice: (
+    schoolSlug: string,
+    body: {
+      studentId: string;
+      feeType: FeeInvoice["feeType"];
+      term: string;
+      amount: number;
+      dueDate: string;
+      invoiceNo?: string;
+    },
+  ) => api<FeeInvoice>(`/api/t/${schoolSlug}/fees`, { method: "POST", body }),
+  recordFeePayment: (schoolSlug: string, invoiceId: string, amount: number) =>
+    api<FeeInvoice>(`/api/t/${schoolSlug}/fees/${invoiceId}`, {
+      method: "PATCH",
+      body: { amount },
+    }),
 
   /* --- Roll-up for the dashboard --- */
   getDashboard: (schoolSlug: string) => api<SchoolDashboard>(`/api/t/${schoolSlug}/dashboard`),

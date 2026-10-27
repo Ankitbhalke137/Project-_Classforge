@@ -46,6 +46,7 @@ model Tenant {
   timetablePeriods TimetablePeriod[]
   timetableSlots TimetableSlot[]
   notificationPreferences NotificationPreference[]
+  feeInvoices  FeeInvoice[]
 
   @@map("tenants")
 }
@@ -55,6 +56,12 @@ model User {
   name         String   @db.VarChar(150)
   email        String   @unique @db.VarChar(255)
   passwordHash String   @map("password_hash") @db.VarChar(255)
+  /**
+   * True when the password was issued by an administrator (an invite, an admin
+   * reset, or a resent student credential) rather than chosen by the owner.
+   * The client blocks the app until it is cleared by a real password change.
+   */
+  mustChangePassword Boolean @default(false) @map("must_change_password")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   refreshTokens RefreshToken[]
   
@@ -305,6 +312,7 @@ model Student {
   enrolments Enrolment[]
   attendanceRecords AttendanceRecord[]
   marks Mark[]
+  feeInvoices FeeInvoice[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, admissionNo])
@@ -498,6 +506,48 @@ model Announcement {
 }
 
 
+
+/* ------------------------------------------------------------------ *
+ * Fees
+ *
+ * One invoice is one bill raised against one student for one fee head and one
+ * term. Payments are recorded against the invoice (`amountPaid`), so the
+ * collection summary is derived from the same rows the ledger shows — there is
+ * no second, hand-maintained total to drift out of sync.
+ * ------------------------------------------------------------------ */
+
+enum FeeStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+model FeeInvoice {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  studentId  String    @map("student_id") @db.Uuid
+  invoiceNo  String    @map("invoice_no") @db.VarChar(40)
+  term       String    @db.VarChar(50)
+  feeType    String    @map("fee_type") @db.VarChar(50)
+  amount     Decimal   @db.Decimal(12, 2)
+  amountPaid Decimal   @default(0) @map("amount_paid") @db.Decimal(12, 2)
+  dueDate    DateTime  @map("due_date") @db.Date
+  status     FeeStatus @default(PENDING)
+  paidAt     DateTime? @map("paid_at") @db.Timestamp(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, invoiceNo])
+  @@index([tenantId, studentId])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+  @@map("fee_invoices")
+}
 
 enum PlatformRole {
   SUPER_ADMIN

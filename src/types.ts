@@ -181,12 +181,17 @@ export interface Teacher {
   userId?: string | null;
 }
 
+/**
+ * A guardian as the roster knows them. The schema stores a guardian's name and
+ * phone on each student, not a separate contact record, so `email` and
+ * `occupation` are genuinely absent rather than invented.
+ */
 export interface Parent {
   id: string;
   name: string;
-  email: string;
-  phone: string;
-  occupation: string;
+  email: string | null;
+  phone: string | null;
+  occupation: string | null;
   /** A parent with two children in the school has two entries here. */
   studentIds: string[];
 }
@@ -497,6 +502,8 @@ export type FeeType = (typeof FEE_TYPES)[number];
 
 export interface FeeInvoice {
   id: string;
+  /** Human-readable reference, unique inside one school. */
+  invoiceNo: string;
   studentId: string;
   studentName: string;
   className: string;
