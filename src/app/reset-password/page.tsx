@@ -9,6 +9,8 @@ import { EyeIcon, EyeOffIcon } from "@/components/ui/icons";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 export default function ResetPasswordPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
