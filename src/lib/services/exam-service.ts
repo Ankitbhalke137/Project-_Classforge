@@ -3,7 +3,8 @@
  */
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { BadRequestError, ConflictError, NotFoundError } from "@/lib/errors";
+import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from "@/lib/errors";
+import { withTenant } from "@/lib/tenant-context";
 import { GRADE_BANDS, type Grade } from "@/types";
 
 const isoDate = z
@@ -141,184 +142,197 @@ export async function listExams(
     ...(filters.term ? { term: filters.term } : {}),
   };
 
-  const [total, exams] = await Promise.all([
-    prisma.exam.count({ where }),
-    prisma.exam.findMany({
-      where,
-      include: examInclude,
-      orderBy: { examDate: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-  ]);
+  return withTenant(tenantId, async (tx) => {
+    const [total, exams] = await Promise.all([
+      tx.exam.count({ where }),
+      tx.exam.findMany({
+        where,
+        include: examInclude,
+        orderBy: { examDate: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
 
-  const totalPages = Math.max(Math.ceil(total / limit), 1);
+    const totalPages = Math.max(Math.ceil(total / limit), 1);
 
-  return {
-    data: exams.map(formatExam),
-    pagination: {
-      page,
-      limit,
+    return {
+      data: exams.map(formatExam),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
       total,
+      page,
+      pageSize,
+      limit,
       totalPages,
-    },
-    total,
-    page,
-    pageSize,
-    limit,
-    totalPages,
-  };
+    };
+  });
 }
 
 export async function createExam(tenantId: string, raw: unknown) {
   const input = createExamSchema.parse(raw);
 
-  const section = await prisma.section.findFirst({
-    where: { id: input.sectionId, tenantId },
-    select: { id: true, classId: true },
-  });
-  if (!section) {
-    throw new BadRequestError("Choose a class from this school.", { sectionId: "Unknown class" });
-  }
-
-  const subject = await prisma.subject.findFirst({
-    where: { id: input.subjectId, tenantId },
-    select: { id: true, classId: true },
-  });
-  if (!subject) {
-    throw new BadRequestError("Choose a subject from this school.", { subjectId: "Unknown subject" });
-  }
-  if (subject.classId !== section.classId) {
-    throw new BadRequestError("That subject belongs to a different class.", {
-      subjectId: "Wrong class",
+  return withTenant(tenantId, async (tx) => {
+    const section = await tx.section.findFirst({
+      where: { id: input.sectionId, tenantId },
+      select: { id: true, classId: true },
     });
-  }
+    if (!section) {
+      throw new BadRequestError("Choose a class from this school.", { sectionId: "Unknown class" });
+    }
 
-  const exam = await prisma.exam.create({
-    data: {
-      tenantId,
-      sectionId: input.sectionId,
-      subjectId: input.subjectId,
-      name: input.name,
-      term: input.term || null,
-      examDate: new Date(`${input.examDate}T00:00:00.000Z`),
-      maxMarks: input.maxMarks,
-      passMarks: input.passMarks ?? 0,
-      status: input.status ?? "SCHEDULED",
-    },
-    include: examInclude,
+    const subject = await tx.subject.findFirst({
+      where: { id: input.subjectId, tenantId },
+      select: { id: true, classId: true },
+    });
+    if (!subject) {
+      throw new BadRequestError("Choose a subject from this school.", { subjectId: "Unknown subject" });
+    }
+    if (subject.classId !== section.classId) {
+      throw new BadRequestError("That subject belongs to a different class.", {
+        subjectId: "Wrong class",
+      });
+    }
+
+    const exam = await tx.exam.create({
+      data: {
+        tenantId,
+        sectionId: input.sectionId,
+        subjectId: input.subjectId,
+        name: input.name,
+        term: input.term || null,
+        examDate: new Date(`${input.examDate}T00:00:00.000Z`),
+        maxMarks: input.maxMarks,
+        passMarks: input.passMarks ?? 0,
+        status: input.status ?? "SCHEDULED",
+      },
+      include: examInclude,
+    });
+
+    return formatExam(exam);
   });
-
-  return formatExam(exam);
 }
 
 export async function updateExam(tenantId: string, id: string, raw: unknown) {
   const input = updateExamSchema.parse(raw);
-  const current = await prisma.exam.findFirst({ where: { id, tenantId } });
-  if (!current) throw new NotFoundError("Exam not found.");
 
-  const maxMarks = input.maxMarks ?? current.maxMarks;
-  const passMarks = input.passMarks ?? current.passMarks;
-  if (passMarks > maxMarks) {
-    throw new BadRequestError("Pass marks cannot be more than the maximum.", {
-      passMarks: "Above the maximum",
-    });
-  }
+  return withTenant(tenantId, async (tx) => {
+    const current = await tx.exam.findFirst({ where: { id, tenantId } });
+    if (!current) throw new NotFoundError("Exam not found.");
 
-  if (input.maxMarks !== undefined) {
-    const highest = await prisma.mark.aggregate({
-      where: { tenantId, examId: id },
-      _max: { score: true },
-    });
-    if (highest._max.score !== null && Number(highest._max.score) > input.maxMarks) {
-      throw new ConflictError(
-        "A recorded mark is already above that maximum. Raise the mark first, then lower the maximum.",
-      );
+    const maxMarks = input.maxMarks ?? current.maxMarks;
+    const passMarks = input.passMarks ?? current.passMarks;
+    if (passMarks > maxMarks) {
+      throw new BadRequestError("Pass marks cannot be more than the maximum.", {
+        passMarks: "Above the maximum",
+      });
     }
-  }
 
-  const exam = await prisma.exam.update({
-    where: { id },
-    data: {
-      name: input.name,
-      term: input.term === undefined ? undefined : input.term || null,
-      examDate: input.examDate ? new Date(`${input.examDate}T00:00:00.000Z`) : undefined,
-      maxMarks: input.maxMarks,
-      passMarks: input.passMarks,
-      status: input.status,
-    },
-    include: examInclude,
+    if (input.maxMarks !== undefined) {
+      const highest = await tx.mark.aggregate({
+        where: { tenantId, examId: id },
+        _max: { score: true },
+      });
+      if (highest._max.score !== null && Number(highest._max.score) > input.maxMarks) {
+        throw new ConflictError(
+          "A recorded mark is already above that maximum. Raise the mark first, then lower the maximum.",
+        );
+      }
+    }
+
+    const exam = await tx.exam.update({
+      where: { id },
+      data: {
+        name: input.name,
+        term: input.term === undefined ? undefined : input.term || null,
+        examDate: input.examDate ? new Date(`${input.examDate}T00:00:00.000Z`) : undefined,
+        maxMarks: input.maxMarks,
+        passMarks: input.passMarks,
+        status: input.status,
+      },
+      include: examInclude,
+    });
+
+    return formatExam(exam);
   });
-
-  return formatExam(exam);
 }
 
 export async function getExam(tenantId: string, id: string) {
-  const exam = await prisma.exam.findFirst({
-    where: { id, tenantId },
-    include: examInclude,
-  });
-  if (!exam) throw new NotFoundError("Exam not found.");
+  return withTenant(tenantId, async (tx) => {
+    const exam = await tx.exam.findFirst({
+      where: { id, tenantId },
+      include: examInclude,
+    });
+    if (!exam) throw new NotFoundError("Exam not found.");
 
-  return formatExam(exam);
+    return formatExam(exam);
+  });
 }
 
 export async function deleteExam(tenantId: string, id: string) {
-  const exam = await prisma.exam.findFirst({
-    where: { id, tenantId },
-    include: { _count: { select: { marks: true } } },
+  return withTenant(tenantId, async (tx) => {
+    const exam = await tx.exam.findFirst({
+      where: { id, tenantId },
+      include: { _count: { select: { marks: true } } },
+    });
+    if (!exam) throw new NotFoundError("Exam not found.");
+
+    if (exam._count.marks > 0) {
+      throw new ConflictError(
+        "This exam already has marks. Cancel it instead of deleting it, so the results stay auditable.",
+      );
+    }
+
+    await tx.exam.delete({ where: { id } });
+    return { removed: true, id };
   });
-  if (!exam) throw new NotFoundError("Exam not found.");
-
-  if (exam._count.marks > 0) {
-    throw new ConflictError(
-      "This exam already has marks. Cancel it instead of deleting it, so the results stay auditable.",
-    );
-  }
-
-  await prisma.exam.delete({ where: { id } });
-  return { removed: true, id };
 }
 
 export async function getExamResults(tenantId: string, examId: string) {
-  const exam = await prisma.exam.findFirst({
-    where: { id: examId, tenantId },
-    include: examInclude,
-  });
-  if (!exam) throw new NotFoundError("Exam not found.");
+  return withTenant(tenantId, async (tx) => {
+    const exam = await tx.exam.findFirst({
+      where: { id: examId, tenantId },
+      include: examInclude,
+    });
+    if (!exam) throw new NotFoundError("Exam not found.");
 
-  const [enrolments, marks] = await Promise.all([
-    prisma.enrolment.findMany({
-      where: { tenantId, sectionId: exam.sectionId, status: "ACTIVE" },
-      include: {
-        student: {
-          select: { id: true, firstName: true, lastName: true, admissionNo: true },
+    const [enrolments, marks] = await Promise.all([
+      tx.enrolment.findMany({
+        where: { tenantId, sectionId: exam.sectionId, status: "ACTIVE" },
+        include: {
+          student: {
+            select: { id: true, firstName: true, lastName: true, admissionNo: true },
+          },
         },
-      },
-      orderBy: { student: { admissionNo: "asc" } },
-    }),
-    prisma.mark.findMany({ where: { tenantId, examId } }),
-  ]);
+        orderBy: { student: { admissionNo: "asc" } },
+      }),
+      tx.mark.findMany({ where: { tenantId, examId } }),
+    ]);
 
-  const byStudent = new Map(marks.map((mark) => [mark.studentId, mark]));
+    const byStudent = new Map(marks.map((mark) => [mark.studentId, mark]));
 
-  return {
-    exam: formatExam(exam),
-    results: enrolments.map((enrolment) => {
-      const mark = byStudent.get(enrolment.student.id);
-      const score = mark ? Number(mark.score) : null;
-      return {
-        id: mark?.id ?? "",
-        examId,
-        studentId: enrolment.student.id,
-        studentName: `${enrolment.student.firstName} ${enrolment.student.lastName}`.trim(),
-        admissionNo: enrolment.student.admissionNo,
-        marksObtained: score,
-        grade: gradeFor(score, exam.maxMarks),
-        remarks: mark?.remarks ?? null,
-      };
-    }),
-  };
+    return {
+      exam: formatExam(exam),
+      results: enrolments.map((enrolment) => {
+        const mark = byStudent.get(enrolment.student.id);
+        const score = mark ? Number(mark.score) : null;
+        return {
+          id: mark?.id ?? "",
+          examId,
+          studentId: enrolment.student.id,
+          studentName: `${enrolment.student.firstName} ${enrolment.student.lastName}`.trim(),
+          admissionNo: enrolment.student.admissionNo,
+          marksObtained: score,
+          grade: gradeFor(score, exam.maxMarks),
+          remarks: mark?.remarks ?? null,
+        };
+      }),
+    };
+  });
 }
 
 /**
@@ -330,75 +344,77 @@ export async function getExamResults(tenantId: string, examId: string) {
  * be reached through this query.
  */
 export async function getMyResults(tenantId: string, userId: string) {
-  const student = await prisma.student.findFirst({
-    where: { tenantId, userId },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      admissionNo: true,
-      enrolments: {
-        where: { status: "ACTIVE" },
-        select: { sectionId: true },
+  return withTenant(tenantId, async (tx) => {
+    const student = await tx.student.findFirst({
+      where: { tenantId, userId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        admissionNo: true,
+        enrolments: {
+          where: { status: "ACTIVE" },
+          select: { sectionId: true },
+        },
       },
-    },
+    });
+
+    if (!student) {
+      throw new NotFoundError("No student record is linked to this account yet.");
+    }
+
+    const sectionIds = student.enrolments.map((row) => row.sectionId);
+    const base = {
+      student: {
+        id: student.id,
+        name: `${student.firstName} ${student.lastName}`.trim(),
+        admissionNo: student.admissionNo,
+      },
+    };
+
+    if (sectionIds.length === 0) return { ...base, results: [] };
+
+    const exams = await tx.exam.findMany({
+      where: {
+        tenantId,
+        sectionId: { in: sectionIds },
+        publishedAt: { not: null },
+      },
+      include: {
+        subject: { select: { name: true } },
+        section: { select: { name: true, schoolClass: { select: { name: true } } } },
+        marks: { where: { studentId: student.id } },
+      },
+      orderBy: { examDate: "desc" },
+    });
+
+    return {
+      ...base,
+      results: exams.map((exam) => {
+        const mark = exam.marks[0];
+        const score = mark ? Number(mark.score) : null;
+        return {
+          examId: exam.id,
+          examName: exam.name,
+          subjectId: exam.subjectId,
+          subjectName: exam.subject.name,
+          className: `${exam.section.schoolClass.name} - ${exam.section.name}`,
+          term: exam.term ?? "",
+          date: exam.examDate.toISOString().slice(0, 10),
+          maxMarks: exam.maxMarks,
+          passMarks: exam.passMarks,
+          marksObtained: score,
+          percentage:
+            score === null || exam.maxMarks <= 0
+              ? null
+              : Math.round((score / exam.maxMarks) * 100),
+          grade: gradeFor(score, exam.maxMarks),
+          remarks: mark?.remarks ?? null,
+          publishedAt: exam.publishedAt?.toISOString() ?? null,
+        };
+      }),
+    };
   });
-
-  if (!student) {
-    throw new NotFoundError("No student record is linked to this account yet.");
-  }
-
-  const sectionIds = student.enrolments.map((row) => row.sectionId);
-  const base = {
-    student: {
-      id: student.id,
-      name: `${student.firstName} ${student.lastName}`.trim(),
-      admissionNo: student.admissionNo,
-    },
-  };
-
-  if (sectionIds.length === 0) return { ...base, results: [] };
-
-  const exams = await prisma.exam.findMany({
-    where: {
-      tenantId,
-      sectionId: { in: sectionIds },
-      publishedAt: { not: null },
-    },
-    include: {
-      subject: { select: { name: true } },
-      section: { select: { name: true, schoolClass: { select: { name: true } } } },
-      marks: { where: { studentId: student.id } },
-    },
-    orderBy: { examDate: "desc" },
-  });
-
-  return {
-    ...base,
-    results: exams.map((exam) => {
-      const mark = exam.marks[0];
-      const score = mark ? Number(mark.score) : null;
-      return {
-        examId: exam.id,
-        examName: exam.name,
-        subjectId: exam.subjectId,
-        subjectName: exam.subject.name,
-        className: `${exam.section.schoolClass.name} - ${exam.section.name}`,
-        term: exam.term ?? "",
-        date: exam.examDate.toISOString().slice(0, 10),
-        maxMarks: exam.maxMarks,
-        passMarks: exam.passMarks,
-        marksObtained: score,
-        percentage:
-          score === null || exam.maxMarks <= 0
-            ? null
-            : Math.round((score / exam.maxMarks) * 100),
-        grade: gradeFor(score, exam.maxMarks),
-        remarks: mark?.remarks ?? null,
-        publishedAt: exam.publishedAt?.toISOString() ?? null,
-      };
-    }),
-  };
 }
 
 export async function saveExamMarks(
@@ -406,95 +422,157 @@ export async function saveExamMarks(
   examId: string,
   userId: string,
   raw: unknown,
+  role?: string,
 ) {
   const input = marksSchema.parse(raw);
-  const exam = await prisma.exam.findFirst({
-    where: { id: examId, tenantId },
-    select: { id: true, sectionId: true, maxMarks: true, status: true },
-  });
-  if (!exam) throw new NotFoundError("Exam not found.");
+  return withTenant(tenantId, async (tx) => {
+    const exam = await tx.exam.findFirst({
+      where: { id: examId, tenantId },
+      select: { id: true, sectionId: true, subjectId: true, maxMarks: true, status: true },
+    });
+    if (!exam) throw new NotFoundError("Exam not found.");
 
-  const tooHigh = input.records.find(
-    (record) => record.score !== null && record.score > exam.maxMarks,
-  );
-  if (tooHigh) {
-    throw new BadRequestError(`A mark cannot be above the maximum of ${exam.maxMarks}.`);
-  }
+    if (exam.status === "CANCELLED") {
+      throw new BadRequestError("Cannot enter marks for a cancelled exam.");
+    }
 
-  const enrolments = await prisma.enrolment.findMany({
-    where: {
-      tenantId,
-      sectionId: exam.sectionId,
-      status: "ACTIVE",
-      studentId: { in: input.records.map((record) => record.studentId) },
-    },
-    select: { studentId: true },
-  });
-  const enrolled = new Set(enrolments.map((row) => row.studentId));
-  if (input.records.some((record) => !enrolled.has(record.studentId))) {
-    throw new BadRequestError(
-      "One of those students is not enrolled in this class. Refresh and try again.",
+    // TASK 6: Restrict exam marks entry to assigned teachers and subjects
+    if (role === "TEACHER") {
+      const teacher = await tx.teacher.findFirst({
+        where: { tenantId, userId },
+        select: { id: true },
+      });
+      if (!teacher) {
+        throw new ForbiddenError("No teacher record found linked to your account in this school.");
+      }
+
+      const assignment = await tx.teachingAssignment.findFirst({
+        where: {
+          tenantId,
+          teacherId: teacher.id,
+          sectionId: exam.sectionId,
+          subjectId: exam.subjectId,
+        },
+        select: { id: true },
+      });
+      if (!assignment) {
+        throw new ForbiddenError(
+          "You are not assigned to enter marks for this exam's subject and section.",
+        );
+      }
+    }
+
+    const tooHigh = input.records.find(
+      (record) => record.score !== null && record.score > exam.maxMarks,
     );
-  }
+    if (tooHigh) {
+      throw new BadRequestError(`A mark cannot be above the maximum of ${exam.maxMarks}.`);
+    }
 
-  await prisma.$transaction(
-    async (tx) => {
-      for (const record of input.records) {
-        if (record.score === null) {
-          await tx.mark.deleteMany({
-            where: { tenantId, examId, studentId: record.studentId },
-          });
-          continue;
-        }
+    const enrolments = await tx.enrolment.findMany({
+      where: {
+        tenantId,
+        sectionId: exam.sectionId,
+        status: "ACTIVE",
+        studentId: { in: input.records.map((record) => record.studentId) },
+      },
+      select: { studentId: true },
+    });
+    const enrolled = new Set(enrolments.map((row) => row.studentId));
+    if (input.records.some((record) => !enrolled.has(record.studentId))) {
+      throw new BadRequestError(
+        "One of those students is not enrolled in this class. Refresh and try again.",
+      );
+    }
 
-        await tx.mark.upsert({
-          where: {
-            tenantId_examId_studentId: {
-              tenantId,
-              examId,
-              studentId: record.studentId,
-            },
-          },
-          create: {
+    for (const record of input.records) {
+      if (record.score === null) {
+        await tx.mark.deleteMany({
+          where: { tenantId, examId, studentId: record.studentId },
+        });
+        continue;
+      }
+
+      await tx.mark.upsert({
+        where: {
+          tenantId_examId_studentId: {
             tenantId,
             examId,
             studentId: record.studentId,
-            score: record.score,
-            remarks: record.remarks || null,
-            gradedBy: userId,
           },
-          update: {
-            score: record.score,
-            remarks: record.remarks || null,
-            gradedBy: userId,
-          },
-        });
-      }
-    },
-    { timeout: 25_000 },
-  );
+        },
+        create: {
+          tenantId,
+          examId,
+          studentId: record.studentId,
+          score: record.score,
+          remarks: record.remarks || null,
+          gradedBy: userId,
+        },
+        update: {
+          score: record.score,
+          remarks: record.remarks || null,
+          gradedBy: userId,
+        },
+      });
+    }
 
-  if (exam.status === "SCHEDULED" && input.records.some((record) => record.score !== null)) {
-    await prisma.exam.update({ where: { id: examId }, data: { status: "IN_PROGRESS" } });
-  }
+    if (exam.status === "SCHEDULED" && input.records.some((record) => record.score !== null)) {
+      await tx.exam.update({ where: { id: examId }, data: { status: "IN_PROGRESS" } });
+    }
 
-  return getExamResults(tenantId, examId);
+    const [updatedExam, allMarks, allEnrolments] = await Promise.all([
+      tx.exam.findFirst({
+        where: { id: examId, tenantId },
+        include: examInclude,
+      }),
+      tx.mark.findMany({ where: { tenantId, examId } }),
+      tx.enrolment.findMany({
+        where: { tenantId, sectionId: exam.sectionId, status: "ACTIVE" },
+        include: { student: { select: { id: true, firstName: true, lastName: true, admissionNo: true } } },
+        orderBy: { student: { admissionNo: "asc" } },
+      }),
+    ]);
+
+    if (!updatedExam) throw new NotFoundError("Exam not found.");
+
+    const byStudent = new Map(allMarks.map((m) => [m.studentId, m]));
+    return {
+      exam: formatExam(updatedExam),
+      results: allEnrolments.map((enrolment) => {
+        const mark = byStudent.get(enrolment.student.id);
+        const score = mark ? Number(mark.score) : null;
+        return {
+          id: mark?.id ?? "",
+          examId,
+          studentId: enrolment.student.id,
+          studentName: `${enrolment.student.firstName} ${enrolment.student.lastName}`.trim(),
+          admissionNo: enrolment.student.admissionNo,
+          marksObtained: score,
+          grade: gradeFor(score, updatedExam.maxMarks),
+          remarks: mark?.remarks ?? null,
+        };
+      }),
+    };
+  });
 }
 
 export async function publishExam(tenantId: string, examId: string) {
-  const exam = await prisma.exam.findFirst({
-    where: { id: examId, tenantId },
-    include: { _count: { select: { marks: true } } },
-  });
-  if (!exam) throw new NotFoundError("Exam not found.");
-  if (exam._count.marks === 0) {
-    throw new ConflictError("Add at least one mark before publishing results.");
-  }
+  return withTenant(tenantId, async (tx) => {
+    const exam = await tx.exam.findFirst({
+      where: { id: examId, tenantId },
+      include: { _count: { select: { marks: true } } },
+    });
+    if (!exam) throw new NotFoundError("Exam not found.");
+    if (exam._count.marks === 0) {
+      throw new ConflictError("Add at least one mark before publishing results.");
+    }
 
-  await prisma.exam.update({
-    where: { id: examId },
-    data: { publishedAt: new Date(), status: "COMPLETED" },
-  });
+    await tx.exam.update({
+      where: { id: examId },
+      data: { publishedAt: new Date(), status: "COMPLETED" },
+    });
 
-  return getExamResults(tenantId, examId);
+    return getExamResults(tenantId, examId);
+  });
 }

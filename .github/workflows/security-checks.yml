@@ -1,0 +1,80 @@
+name: Security & RLS Verification
+
+on:
+  push:
+    branches: [backend, main]
+  pull_request:
+    branches: [backend, main]
+
+permissions:
+  contents: read
+
+jobs:
+  security-verification:
+    name: Security Hardening & RLS Verification
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: classforge_ci_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      JWT_SECRET: "ci-test-jwt-secret-minimum-32-chars-long-classforge"
+      CSRF_SECRET: "ci-test-csrf-secret-minimum-32-chars-long-classforge"
+      SETUP_DATABASE_URL: "postgresql://postgres:ci_test_password@localhost:5432/classforge_ci_test"
+      APP_DATABASE_URL: "postgresql://classforge_app:ci_app_password@localhost:5432/classforge_ci_test"
+      DATABASE_URL: "postgresql://postgres:ci_test_password@localhost:5432/classforge_ci_test"
+      STRICT_ROLE_CHECK: "true"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run db:generate
+
+      - name: Run Database Migrations on Fresh Test DB
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.SETUP_DATABASE_URL }}
+
+      - name: Provision Restricted Application Role (NOSUPERUSER, NOBYPASSRLS)
+        run: npx tsx scripts/provision-test-role.ts
+        env:
+          SETUP_DATABASE_URL: ${{ env.SETUP_DATABASE_URL }}
+
+      - name: Task 1 - Run Login Rate Limiting Test Suite
+        run: npm run test:rate-limit
+
+      - name: Task 2 - Run CSRF Protection Test Suite
+        run: npm run test:csrf
+
+      - name: Task 3 - Run PostgreSQL RLS Configuration and Role Security Verifier
+        run: npm run test:rls
+
+      - name: Task 4 - Run 7 Mandatory Tenant-Isolation and Authorization Tests
+        run: npm run test:tenant-auth
+
+      - name: TypeScript Compile Check
+        run: npx tsc --noEmit

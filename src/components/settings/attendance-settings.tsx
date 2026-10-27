@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { schoolApi } from "@/lib/api";
 import { useIsReadOnly, useSchoolSlug } from "@/lib/hooks";
 import { ATTENDANCE_STATUSES } from "@/types";
 import { integerError } from "@/lib/validation";
@@ -53,40 +54,41 @@ const DEFAULT_POLICY: AttendancePolicy = {
   lateThresholdMinutes: 15,
 };
 
-function getInitialPolicy(storageKey: string): AttendancePolicy {
-  if (typeof window === "undefined") return DEFAULT_POLICY;
-  try {
-    const stored = localStorage.getItem(storageKey);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (parsed && typeof parsed === "object") {
-        return { ...DEFAULT_POLICY, ...parsed };
-      }
-    }
-  } catch {
-    // Ignore storage read errors
-  }
-  return DEFAULT_POLICY;
-}
-
 export function AttendanceSettingsSection() {
   const schoolSlug = useSchoolSlug() ?? "";
   const readOnly = useIsReadOnly();
-  const storageKey = `classforge_${schoolSlug || "default"}_attendance_policy`;
 
-  const [policy, setPolicy] = useState<AttendancePolicy>(() => getInitialPolicy(storageKey));
+  const [policy, setPolicy] = useState<AttendancePolicy>(DEFAULT_POLICY);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Synchronize if switching to a different school
-    const current = getInitialPolicy(storageKey);
-    const timer = setTimeout(() => {
-      setPolicy(current);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [storageKey]);
+    let cancelled = false;
+
+    async function loadSettings() {
+      try {
+        const settings = await schoolApi.getAttendanceSettings(schoolSlug);
+        if (!cancelled) {
+          setPolicy({
+            allowTeacherEdit: settings.allowTeacherEdit,
+            requireParentNoteForExcused: settings.requireParentNoteForExcused,
+            lateThresholdMinutes: settings.lateThresholdMinutes,
+          });
+        }
+      } catch {
+        // Keep defaults if the API call fails.
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [schoolSlug]);
 
   function validate(): boolean {
     const lateError = integerError(policy.lateThresholdMinutes, {
@@ -106,10 +108,14 @@ export function AttendanceSettingsSection() {
     setSaved(false);
 
     try {
-      localStorage.setItem(storageKey, JSON.stringify(policy));
+      await schoolApi.saveAttendanceSettings(schoolSlug, {
+        allowTeacherEdit: policy.allowTeacherEdit,
+        requireParentNoteForExcused: policy.requireParentNoteForExcused,
+        lateThresholdMinutes: policy.lateThresholdMinutes,
+      });
       setSaved(true);
     } catch {
-      // Ignore storage write errors
+      setError("Could not save attendance settings. Try again.");
     } finally {
       setSaving(false);
     }
@@ -222,7 +228,7 @@ export function AttendanceSettingsSection() {
                   <span className="size-4 shrink-0 flex items-center justify-center rounded-full bg-secondary-soft text-secondary-strong">
                     ✓
                   </span>
-                  <span>Policy preferences saved</span>
+                  <span>Attendance settings saved</span>
                 </div>
               ) : null}
               <p className="text-xs text-body">

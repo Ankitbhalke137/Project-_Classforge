@@ -1,8 +1,16 @@
 import { SignJWT,jwtVerify } from "jose";
 
+export type SchoolMembershipClaim = {
+  schoolId: string;
+  schoolSlug: string;
+  role: string;
+};
+
 export type AccessTokenPayload = {
   userId: string;
   email: string;
+  isSuperAdmin?: boolean;
+  memberships?: SchoolMembershipClaim[];
 };
 const ACCESS_TOKEN_EXPIRY = "15m";
 
@@ -18,9 +26,17 @@ function getSecretKey() : Uint8Array{
 export async function createAccessToken(payload:AccessTokenPayload): Promise<string>{
   const secretKey = getSecretKey();
 
-  return new SignJWT({
-    email : payload.email,
-  })
+  const claims: Record<string, unknown> = {
+    email: payload.email,
+  };
+  if (typeof payload.isSuperAdmin === "boolean") {
+    claims.isSuperAdmin = payload.isSuperAdmin;
+  }
+  if (Array.isArray(payload.memberships)) {
+    claims.memberships = payload.memberships;
+  }
+
+  return new SignJWT(claims)
   .setProtectedHeader({alg: "HS256"})
   .setSubject(payload.userId)
   .setIssuedAt()
@@ -38,9 +54,31 @@ export async function verifyAccessToken(token:string):Promise<AccessTokenPayload
   if(typeof payload.sub !== "string" || typeof payload.email !== "string"){
     return null;
   }
+
+  const memberships: SchoolMembershipClaim[] = [];
+  if (Array.isArray(payload.memberships)) {
+    for (const m of payload.memberships) {
+      if (
+        m &&
+        typeof m === "object" &&
+        typeof (m as any).schoolId === "string" &&
+        typeof (m as any).schoolSlug === "string" &&
+        typeof (m as any).role === "string"
+      ) {
+        memberships.push({
+          schoolId: (m as any).schoolId,
+          schoolSlug: (m as any).schoolSlug,
+          role: (m as any).role,
+        });
+      }
+    }
+  }
+
   return {
     userId: payload.sub,
-    email: payload.email
+    email: payload.email,
+    isSuperAdmin: payload.isSuperAdmin === true,
+    memberships,
   };
   }
   catch{

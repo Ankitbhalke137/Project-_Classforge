@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { AlertIcon, EyeIcon, EyeOffIcon, ShieldCheckIcon } from "@/components/ui/icons";
-import { ApiError } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { landingPath, loginContexts, needsSchoolSelection } from "@/lib/nav";
 import { useAuth } from "@/store/auth";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
@@ -42,6 +42,9 @@ export function LoginForm() {
   const [formHint, setFormHint] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [showSchoolSelector, setShowSchoolSelector] = useState(false);
   const [contextOptions, setContextOptions] = useState<ContextOption[]>([]);
@@ -166,6 +169,34 @@ export function LoginForm() {
     const only = options[0];
     setActiveContext(only.schoolSlug, only.role);
     router.replace(landingPath(user, schools));
+  }
+
+  async function handleForgotPassword(event: React.FormEvent) {
+    event.preventDefault();
+    setForgotMessage(null);
+    setForgotSubmitting(true);
+
+    try {
+      await api("/api/auth/forgot-password", {
+        method: "POST",
+        body: { email: forgotEmail.trim() },
+      });
+      setForgotMessage({
+        type: "success",
+        text: "If an account exists for this email, a password reset link has been sent.",
+      });
+      setForgotEmail("");
+    } catch (err) {
+      setForgotMessage({
+        type: "error",
+        text:
+          err instanceof ApiError
+            ? err.message
+            : "Could not send the reset link. Try again.",
+      });
+    } finally {
+      setForgotSubmitting(false);
+    }
   }
 
   return (
@@ -343,41 +374,55 @@ export function LoginForm() {
               footer={
                 <Button
                   type="button"
-                  variant="primary"
+                  variant="ghost"
                   onClick={() => setShowForgotPasswordModal(false)}
                 >
-                  Got it
+                  Cancel
                 </Button>
               }
             >
-              <div className="space-y-4 text-sm text-body">
-                <p>
-                  For platform and school security, user passwords in ClassForge are issued and reset through your school or system administrator.
-                </p>
-                <div className="rounded-xl border border-line bg-page p-4">
-                  <h4 className="font-medium text-ink">How to reset your access:</h4>
-                  <ul className="mt-2 list-disc space-y-1.5 pl-5">
-                    <li>
-                      <strong>Teachers & Staff:</strong> Contact your School Admin or IT administrator. They can re-issue and email a temporary password to you from staff management.
-                    </li>
-                    <li>
-                      <strong>Students:</strong> Contact your school office or homeroom teacher to verify your credentials.
-                    </li>
-                    <li>
-                      <strong>School Administrators:</strong> Contact the ClassForge Super Admin to reset your school administration account.
-                    </li>
-                  </ul>
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                {forgotMessage ? (
+                  <div
+                    role="alert"
+                    className={`rounded-lg border p-3 text-sm ${
+                      forgotMessage.type === "success"
+                        ? "border-success-200 bg-success-50 text-success-600"
+                        : "border-danger-200 bg-danger-50 text-danger-600"
+                    }`}
+                  >
+                    {forgotMessage.text}
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <label htmlFor="forgot-email" className="text-sm font-medium text-ink">
+                    Email address
+                  </label>
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(event) => setForgotEmail(event.target.value)}
+                    placeholder="you@school.edu"
+                    disabled={forgotSubmitting}
+                    label="Email address"
+                  />
                 </div>
-                {email.trim() ? (
-                  <p className="text-xs text-muted">
-                    Entered email: <span className="font-mono text-ink">{email.trim()}</span>. Provide this email to your administrator to locate your account quickly.
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted">
-                    Once your administrator sends a temporary password, sign in and update it under Account Security.
+                <Button
+                  type="submit"
+                  variant="primary"
+                  isLoading={forgotSubmitting}
+                  disabled={forgotSubmitting}
+                  className="w-full"
+                >
+                  Send reset link
+                </Button>
+                {forgotMessage && forgotMessage.type === "success" && (
+                  <p className="text-xs text-muted text-center">
+                    Check your inbox. The link expires in 1 hour.
                   </p>
                 )}
-              </div>
+              </form>
             </Modal>
 
             {showChangePasswordModal && (

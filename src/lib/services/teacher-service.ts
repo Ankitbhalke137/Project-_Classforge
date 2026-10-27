@@ -6,6 +6,7 @@ import { hash } from "bcryptjs";
 import { Prisma, MembershipRole, MembershipStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { withTenant } from "@/lib/tenant-context";
 import { ConflictError, NotFoundError } from "@/lib/errors";
 
 /* ------------------------------------------------------------------ *
@@ -189,7 +190,7 @@ export async function createTeacher(tenantId: string, rawInput: unknown) {
     // Hash before the transaction, never inside it — see the note in student-service.
     const passwordHash = temporaryPassword ? await hash(temporaryPassword, 10) : null;
 
-    const teacher = await prisma.$transaction(async (tx) => {
+    const teacher = await withTenant(tenantId, async (tx) => {
       if (temporaryPassword) {
         await tx.user.update({
           where: { id: existingUser.id },
@@ -236,7 +237,7 @@ export async function createTeacher(tenantId: string, rawInput: unknown) {
   const temporaryPassword = randomBytes(12).toString("base64url");
   const passwordHash = await hash(temporaryPassword, 10);
 
-  const teacher = await prisma.$transaction(async (tx) => {
+  const teacher = await withTenant(tenantId, async (tx) => {
     const user = await tx.user.create({
       data: {
         name: `${input.firstName} ${input.lastName}`.trim(),
@@ -281,31 +282,31 @@ export async function createTeacher(tenantId: string, rawInput: unknown) {
 export async function updateTeacher(tenantId: string, teacherId: string, rawInput: unknown) {
   const input = updateTeacherSchema.parse(rawInput);
 
-  const current = await prisma.teacher.findFirst({
-    where: { id: teacherId, tenantId },
-    include: teacherInclude(tenantId),
-  });
+  return withTenant(tenantId, async (tx) => {
+    const current = await tx.teacher.findFirst({
+      where: { id: teacherId, tenantId },
+      include: teacherInclude(tenantId),
+    });
 
-  if (!current) throw new NotFoundError("Teacher not found.");
+    if (!current) throw new NotFoundError("Teacher not found.");
 
-  if (input.employeeNo !== undefined) {
-    await assertEmployeeNoFree(tenantId, input.employeeNo, teacherId);
-  }
+    if (input.employeeNo !== undefined) {
+      await assertEmployeeNoFree(tenantId, input.employeeNo, teacherId);
+    }
 
-  const profile: Prisma.TeacherUpdateInput = {};
-  if (input.firstName !== undefined) profile.firstName = input.firstName;
-  if (input.lastName !== undefined) profile.lastName = input.lastName;
-  if (input.employeeNo !== undefined) profile.employeeNo = input.employeeNo || null;
-  if (input.phone !== undefined) profile.phone = input.phone || null;
-  if (input.qualification !== undefined) profile.qualification = input.qualification || null;
-  if (input.designation !== undefined) profile.designation = input.designation || null;
+    const profile: Prisma.TeacherUpdateInput = {};
+    if (input.firstName !== undefined) profile.firstName = input.firstName;
+    if (input.lastName !== undefined) profile.lastName = input.lastName;
+    if (input.employeeNo !== undefined) profile.employeeNo = input.employeeNo || null;
+    if (input.phone !== undefined) profile.phone = input.phone || null;
+    if (input.qualification !== undefined) profile.qualification = input.qualification || null;
+    if (input.designation !== undefined) profile.designation = input.designation || null;
 
-  const nextName =
-    input.firstName !== undefined || input.lastName !== undefined
-      ? `${input.firstName ?? current.firstName} ${input.lastName ?? current.lastName}`.trim()
-      : null;
+    const nextName =
+      input.firstName !== undefined || input.lastName !== undefined
+        ? `${input.firstName ?? current.firstName} ${input.lastName ?? current.lastName}`.trim()
+        : null;
 
-  await prisma.$transaction(async (tx) => {
     if (Object.keys(profile).length > 0) {
       await tx.teacher.update({ where: { id: teacherId }, data: profile });
     }
@@ -350,35 +351,37 @@ export async function updateTeacher(tenantId: string, teacherId: string, rawInpu
         data: { status: input.status },
       });
     }
+
+    const updated = await tx.teacher.findFirst({
+      where: { id: teacherId, tenantId },
+      include: teacherInclude(tenantId),
+    });
+
+    if (!updated) throw new NotFoundError("Teacher not found.");
+
+    return formatTeacher(updated);
   }, { timeout: 15_000 });
-
-  const updated = await prisma.teacher.findFirst({
-    where: { id: teacherId, tenantId },
-    include: teacherInclude(tenantId),
-  });
-
-  if (!updated) throw new NotFoundError("Teacher not found.");
-
-  return formatTeacher(updated);
 }
 
 /** Deactivates access without deleting the profile or its history. */
 export async function deactivateTeacher(tenantId: string, teacherId: string) {
-  const current = await prisma.teacher.findFirst({
-    where: { id: teacherId, tenantId },
-    select: { id: true, userId: true },
-  });
-
-  if (!current) throw new NotFoundError("Teacher not found.");
-
-  if (current.userId) {
-    await prisma.membership.updateMany({
-      where: { tenantId, userId: current.userId, role: MembershipRole.TEACHER },
-      data: { status: MembershipStatus.INACTIVE },
+  return withTenant(tenantId, async (tx) => {
+    const current = await tx.teacher.findFirst({
+      where: { id: teacherId, tenantId },
+      select: { id: true, userId: true },
     });
-  }
 
-  return { deactivated: true, status: "INACTIVE" as const };
+    if (!current) throw new NotFoundError("Teacher not found.");
+
+    if (current.userId) {
+      await tx.membership.updateMany({
+        where: { tenantId, userId: current.userId, role: MembershipRole.TEACHER },
+        data: { status: MembershipStatus.INACTIVE },
+      });
+    }
+
+    return { deactivated: true, status: "INACTIVE" as const };
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -473,32 +476,34 @@ export async function listTeachers(tenantId: string, rawQuery: TeacherListQuery)
     }
   }
 
-  const [total, teachers] = await Promise.all([
-    prisma.teacher.count({ where }),
-    prisma.teacher.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy,
-      include: teacherInclude(tenantId),
-    }),
-  ]);
+  return withTenant(tenantId, async (tx) => {
+    const [total, teachers] = await Promise.all([
+      tx.teacher.count({ where }),
+      tx.teacher.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: teacherInclude(tenantId),
+      }),
+    ]);
 
-  const totalPages = Math.max(Math.ceil(total / limit), 1);
-  const data = teachers.map(formatTeacher);
+    const totalPages = Math.max(Math.ceil(total / limit), 1);
+    const data = teachers.map(formatTeacher);
 
-  return {
-    data,
-    pagination: {
-      page,
-      limit,
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
       total,
+      page,
+      pageSize: limit,
+      limit,
       totalPages,
-    },
-    total,
-    page,
-    pageSize: limit,
-    limit,
-    totalPages,
-  };
+    };
+  });
 }

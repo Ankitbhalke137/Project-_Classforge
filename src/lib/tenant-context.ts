@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyAccessToken } from "@/lib/auth";
 import { ACCESS_TOKEN_COOKIE } from "@/lib/auth-cookies";
 import { UnauthorizedError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import { assertCsrfProtection, isSafeMethod } from "@/lib/csrf";
 
 export interface TenantContext {
   tenant: {
@@ -52,15 +53,42 @@ export async function withTenant<T>(
 }
 
 /**
+ * Scoped query context helper for user-level bootstrap access.
+ *
+ * Sets transaction-local `app.current_user_id` so an authenticated user can discover
+ * and verify their own school memberships across multiple schools under PostgreSQL RLS
+ * without weakening tenant isolation or allowing cross-tenant user enumeration.
+ */
+export async function withUserContext<T>(
+  userId: string,
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+  options: { timeout?: number } = {},
+): Promise<T> {
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+      return callback(tx);
+    },
+    { timeout: options.timeout ?? 15_000 },
+  );
+}
+
+/**
  * Extracts and verifies the access token from request cookies or Authorization header.
  * Returns the authenticated user record with their active school memberships.
+ *
+ * Enforces CSRF protection for state-changing requests (POST, PUT, PATCH, DELETE)
+ * whenever authentication relies on browser-automatically attached cookies.
+ * Requests using stateless Authorization Bearer tokens are exempt from CSRF.
  */
 export async function authenticateRequest(request: Request | NextRequest) {
   let token: string | undefined;
+  let isCookieAuth = false;
 
   // 1. Check cookies
   if ("cookies" in request && typeof request.cookies?.get === "function") {
     token = request.cookies.get(ACCESS_TOKEN_COOKIE)?.value;
+    if (token) isCookieAuth = true;
   } else {
     const cookieHeader = request.headers.get("cookie");
     if (cookieHeader) {
@@ -70,6 +98,7 @@ export async function authenticateRequest(request: Request | NextRequest) {
         .find((c) => c.startsWith(`${ACCESS_TOKEN_COOKIE}=`));
       if (match) {
         token = match.substring(ACCESS_TOKEN_COOKIE.length + 1);
+        isCookieAuth = true;
       }
     }
   }
@@ -79,6 +108,7 @@ export async function authenticateRequest(request: Request | NextRequest) {
     const authHeader = request.headers.get("authorization");
     if (authHeader && authHeader.startsWith("Bearer ")) {
       token = authHeader.substring(7).trim();
+      isCookieAuth = false;
     }
   }
 
@@ -91,16 +121,28 @@ export async function authenticateRequest(request: Request | NextRequest) {
     throw new UnauthorizedError("Invalid or expired access token.");
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: payload.userId },
-    include: {
-      memberships: {
-        where: { status: "ACTIVE" },
-        include: {
-          tenant: true,
+  // 3. Enforce CSRF protection for cookie-authenticated state-changing requests
+  if (isCookieAuth && !isSafeMethod(request.method ?? "GET")) {
+    const csrfCheck = assertCsrfProtection(request, {
+      expectedUserId: payload.userId,
+    });
+    if (!csrfCheck.allowed) {
+      throw new ForbiddenError(csrfCheck.reason ?? "CSRF token validation failed.");
+    }
+  }
+
+  const user = await withUserContext(payload.userId, async (tx) => {
+    return tx.user.findUnique({
+      where: { id: payload.userId },
+      include: {
+        memberships: {
+          where: { status: "ACTIVE" },
+          include: {
+            tenant: true,
+          },
         },
       },
-    },
+    });
   });
 
   if (!user) {

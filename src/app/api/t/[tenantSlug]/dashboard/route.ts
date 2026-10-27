@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 
 /**
@@ -24,27 +24,29 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
     const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
     const [studentCount, teacherCount, classCount, todaysRecords, notices, exams] =
-      await Promise.all([
-        prisma.student.count({ where: { tenantId: tenant.id } }),
-        prisma.teacher.count({ where: { tenantId: tenant.id } }),
-        prisma.schoolClass.count({ where: { tenantId: tenant.id } }),
-        prisma.attendanceRecord.findMany({
-          where: { tenantId: tenant.id, attendanceDate: dayStart },
-          select: { status: true },
-        }),
-        prisma.announcement.findMany({
-          where: { tenantId: tenant.id, publishedAt: { not: null } },
-          include: { creator: { select: { id: true, name: true } } },
-          orderBy: { publishedAt: "desc" },
-          take: 5,
-        }),
-        prisma.exam.findMany({
-          where: { tenantId: tenant.id },
-          include: { subject: { select: { name: true } } },
-          orderBy: { examDate: "desc" },
-          take: 10,
-        }),
-      ]);
+      await withTenant(tenant.id, async (tx) =>
+        Promise.all([
+          tx.student.count({ where: { tenantId: tenant.id } }),
+          tx.teacher.count({ where: { tenantId: tenant.id } }),
+          tx.schoolClass.count({ where: { tenantId: tenant.id } }),
+          tx.attendanceRecord.findMany({
+            where: { tenantId: tenant.id, attendanceDate: dayStart },
+            select: { status: true },
+          }),
+          tx.announcement.findMany({
+            where: { tenantId: tenant.id, publishedAt: { not: null } },
+            include: { creator: { select: { id: true, name: true } } },
+            orderBy: { publishedAt: "desc" },
+            take: 5,
+          }),
+          tx.exam.findMany({
+            where: { tenantId: tenant.id },
+            include: { subject: { select: { name: true } } },
+            orderBy: { examDate: "desc" },
+            take: 10,
+          }),
+        ])
+      );
 
     // Late counts as attended, matching the rest of the product.
     const present = todaysRecords.filter(

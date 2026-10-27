@@ -36,7 +36,7 @@ export async function PUT(
     ]);
     const body: unknown = await request.json().catch(() => null);
     return NextResponse.json(
-      await saveExamMarks(tenant.id, id, membership.userId, body),
+      await saveExamMarks(tenant.id, id, membership.userId, body, membership.role),
     );
   } catch (error) {
     return handleApiError(error);

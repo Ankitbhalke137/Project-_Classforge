@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 
 /**
@@ -20,9 +20,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
     const since = new Date(today);
     since.setDate(since.getDate() - days);
 
-    const records = await prisma.attendanceRecord.findMany({
-      where: { tenantId: tenant.id, attendanceDate: { gte: since } },
-      select: { attendanceDate: true, status: true },
+    const records = await withTenant(tenant.id, async (tx) => {
+      return tx.attendanceRecord.findMany({
+        where: { tenantId: tenant.id, attendanceDate: { gte: since } },
+        select: { attendanceDate: true, status: true },
+      });
     });
 
     const byDay = new Map<string, { present: number; total: number }>();

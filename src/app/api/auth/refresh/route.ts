@@ -9,6 +9,8 @@ import {
     authCookieOptions
 } from "@/lib/auth-cookies";
 import { createStoredRefreshToken, consumeRefreshToken } from "@/lib/refresh-tokens";
+import { generateCsrfToken, setCsrfCookie, validateOrigin } from "@/lib/csrf";
+import { withUserContext } from "@/lib/tenant-context";
 
 /**
  * Trades the refresh cookie for a new access token.
@@ -16,8 +18,18 @@ import { createStoredRefreshToken, consumeRefreshToken } from "@/lib/refresh-tok
  * The old refresh token is deleted as it is used, so it works exactly once. If it
  * is missing or already spent we clear both cookies and send the caller back to
  * the login screen.
+ *
+ * Enforces Origin check to prevent unauthorized cross-origin session refreshes.
  */
 export async function POST(request: Request) {
+    const originCheck = validateOrigin(request);
+    if (!originCheck.valid) {
+        return NextResponse.json(
+            { message: originCheck.reason ?? "Untrusted origin." },
+            { status: 403 }
+        );
+    }
+
     const token = request.headers
         .get("cookie")
         ?.split(";")
@@ -30,16 +42,47 @@ export async function POST(request: Request) {
     const used = await consumeRefreshToken(token);
     if(!used) return expired();
 
-    const user = await prisma.user.findUnique({ where:{ id: used.userId }});
+    const user = await withUserContext(used.userId, async (tx) => {
+      return tx.user.findUnique({
+        where: { id: used.userId },
+        include: {
+          memberships: {
+            where: { status: "ACTIVE" },
+            include: {
+              tenant: {
+                select: { id: true, slug: true, status: true },
+              },
+            },
+          },
+        },
+      });
+    });
     if(!user) return expired();
+
+    const isSuperAdmin = user.platformRole === "SUPER_ADMIN";
+    const schools = user.memberships
+      .filter((m) => m.tenant.status === "ACTIVE")
+      .map((m) => ({
+        schoolId: m.tenant.id,
+        schoolSlug: m.tenant.slug,
+        role: m.role,
+      }));
 
     // Keep the same family so a chain of refreshes stays traceable to one login.
     const { token: refreshToken } = await createStoredRefreshToken(user.id, used.familyId);
-    const accessToken = await createAccessToken({ userId: user.id, email: user.email });
+    const accessToken = await createAccessToken({
+      userId: user.id,
+      email: user.email,
+      isSuperAdmin,
+      memberships: schools,
+    });
 
-    const response = NextResponse.json({ ok: true });
+    const csrfToken = generateCsrfToken(user.id);
+
+    const response = NextResponse.json({ ok: true, csrfToken });
     response.cookies.set(ACCESS_TOKEN_COOKIE, accessToken, { ...authCookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE });
     response.cookies.set(REFRESH_TOKEN_COOKIE, refreshToken, { ...authCookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE });
+    setCsrfCookie(response, csrfToken);
 
     return response;
 }

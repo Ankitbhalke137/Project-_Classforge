@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { BadRequestError, ForbiddenError, NotFoundError, handleApiError } from "@/lib/errors";
 
 const AUDIENCES = ["EVERYONE", "STAFF", "TEACHERS", "STUDENTS", "PARENTS"] as const;
@@ -64,89 +64,91 @@ export async function GET(
     const { tenantSlug } = await context.params;
     const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug);
 
-    // Students see school-wide notices plus notices for their own class.
-    const role: string = membership.role;
-    const scope: Prisma.AnnouncementWhereInput[] = [];
-    if (role === "STUDENT") {
-      const student = await prisma.student.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-        select: {
-          enrolments: {
-            where: { status: "ACTIVE" },
-            select: { sectionId: true },
+    return await withTenant(tenant.id, async (tx) => {
+      // Students see school-wide notices plus notices for their own class.
+      const role: string = membership.role;
+      const scope: Prisma.AnnouncementWhereInput[] = [];
+      if (role === "STUDENT") {
+        const student = await tx.student.findFirst({
+          where: { tenantId: tenant.id, userId: user.id },
+          select: {
+            enrolments: {
+              where: { status: "ACTIVE" },
+              select: { sectionId: true },
+            },
           },
+        });
+        const sectionIds = student?.enrolments.map((row) => row.sectionId) ?? [];
+        scope.push({
+          OR: [
+            { sectionId: null, audience: { hasSome: ["EVERYONE", "STUDENTS"] } },
+            ...(sectionIds.length ? [{ sectionId: { in: sectionIds } }] : []),
+          ],
+        });
+      } else if (role === "PARENT") {
+        scope.push({
+          sectionId: null,
+          audience: { hasSome: ["EVERYONE", "PARENTS"] },
+        });
+      }
+
+      const params = request.nextUrl.searchParams;
+      const search = (params.get("search") ?? "").trim();
+      const priority = params.get("priority") ?? "";
+      const audience = params.get("audience") ?? "";
+      const sectionId = params.get("sectionId") ?? "";
+      const page = Math.max(Number(params.get("page") ?? 1) || 1, 1);
+      const limit = Math.min(
+        Math.max(Number(params.get("limit") ?? params.get("pageSize") ?? 10) || 10, 1),
+        100,
+      );
+
+      if (priority && !PRIORITIES.includes(priority as (typeof PRIORITIES)[number])) {
+        throw new BadRequestError("Unknown priority filter.");
+      }
+      if (audience && !AUDIENCES.includes(audience as (typeof AUDIENCES)[number])) {
+        throw new BadRequestError("Unknown audience filter.");
+      }
+
+      const where: Prisma.AnnouncementWhereInput = {
+        tenantId: tenant.id,
+        publishedAt: { not: null },
+        ...(scope.length ? { AND: scope } : {}),
+        ...(sectionId ? { sectionId } : {}),
+        ...(search
+          ? { OR: [{ title: { contains: search, mode: "insensitive" } }, { content: { contains: search, mode: "insensitive" } }] }
+          : {}),
+        ...(priority ? { priority: priority as (typeof PRIORITIES)[number] } : {}),
+        ...(audience ? { audience: { has: audience } } : {}),
+      };
+
+      const [total, notices] = await Promise.all([
+        tx.announcement.count({ where }),
+        tx.announcement.findMany({
+          where,
+          include: { creator: { select: { id: true, name: true } } },
+          orderBy: [{ pinned: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+      ]);
+
+      const totalPages = Math.max(Math.ceil(total / limit), 1);
+
+      return NextResponse.json({
+        data: notices.map(formatNotice),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
         },
-      });
-      const sectionIds = student?.enrolments.map((row) => row.sectionId) ?? [];
-      scope.push({
-        OR: [
-          { sectionId: null, audience: { hasSome: ["EVERYONE", "STUDENTS"] } },
-          ...(sectionIds.length ? [{ sectionId: { in: sectionIds } }] : []),
-        ],
-      });
-    } else if (role === "PARENT") {
-      scope.push({
-        sectionId: null,
-        audience: { hasSome: ["EVERYONE", "PARENTS"] },
-      });
-    }
-
-    const params = request.nextUrl.searchParams;
-    const search = (params.get("search") ?? "").trim();
-    const priority = params.get("priority") ?? "";
-    const audience = params.get("audience") ?? "";
-    const sectionId = params.get("sectionId") ?? "";
-    const page = Math.max(Number(params.get("page") ?? 1) || 1, 1);
-    const limit = Math.min(
-      Math.max(Number(params.get("limit") ?? params.get("pageSize") ?? 10) || 10, 1),
-      100,
-    );
-
-    if (priority && !PRIORITIES.includes(priority as (typeof PRIORITIES)[number])) {
-      throw new BadRequestError("Unknown priority filter.");
-    }
-    if (audience && !AUDIENCES.includes(audience as (typeof AUDIENCES)[number])) {
-      throw new BadRequestError("Unknown audience filter.");
-    }
-
-    const where: Prisma.AnnouncementWhereInput = {
-      tenantId: tenant.id,
-      publishedAt: { not: null },
-      ...(scope.length ? { AND: scope } : {}),
-      ...(sectionId ? { sectionId } : {}),
-      ...(search
-        ? { OR: [{ title: { contains: search, mode: "insensitive" } }, { content: { contains: search, mode: "insensitive" } }] }
-        : {}),
-      ...(priority ? { priority: priority as (typeof PRIORITIES)[number] } : {}),
-      ...(audience ? { audience: { has: audience } } : {}),
-    };
-
-    const [total, notices] = await Promise.all([
-      prisma.announcement.count({ where }),
-      prisma.announcement.findMany({
-        where,
-        include: { creator: { select: { id: true, name: true } } },
-        orderBy: [{ pinned: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-    ]);
-
-    const totalPages = Math.max(Math.ceil(total / limit), 1);
-
-    return NextResponse.json({
-      data: notices.map(formatNotice),
-      pagination: {
-        page,
-        limit,
         total,
+        page,
+        pageSize: limit,
+        limit,
         totalPages,
-      },
-      total,
-      page,
-      pageSize: limit,
-      limit,
-      totalPages,
+      });
     });
   } catch (error) {
     return handleApiError(error);
@@ -184,71 +186,73 @@ export async function POST(
 
     const input = parsed.data;
 
-    // Verify section belongs to current tenant if sectionId is passed
-    if (input.sectionId) {
-      const section = await prisma.section.findFirst({
-        where: { id: input.sectionId, tenantId: tenant.id },
-        select: { id: true },
+    return await withTenant(tenant.id, async (tx) => {
+      // Verify section belongs to current tenant if sectionId is passed
+      if (input.sectionId) {
+        const section = await tx.section.findFirst({
+          where: { id: input.sectionId, tenantId: tenant.id },
+          select: { id: true },
+        });
+        if (!section) {
+          throw new NotFoundError("Selected class section was not found in this school.");
+        }
+      }
+
+      // Teachers must be assigned to the section and cannot post school-wide
+      if (membership.role === "TEACHER") {
+        if (!input.sectionId) {
+          throw new ForbiddenError(
+            "Teachers cannot post school-wide announcements. Please choose an assigned class section.",
+          );
+        }
+
+        const teacher = await tx.teacher.findFirst({
+          where: { tenantId: tenant.id, userId: membership.userId },
+          select: { id: true },
+        });
+
+        if (!teacher) {
+          throw new ForbiddenError("Your account is not linked to a teacher profile in this school.");
+        }
+
+        const teaches = await tx.teachingAssignment.findFirst({
+          where: { tenantId: tenant.id, teacherId: teacher.id, sectionId: input.sectionId },
+          select: { id: true },
+        });
+
+        const homeroom = teaches
+          ? null
+          : await tx.schoolClass.findFirst({
+              where: {
+                tenantId: tenant.id,
+                homeroomTeacherId: teacher.id,
+                sections: { some: { id: input.sectionId } },
+              },
+              select: { id: true },
+            });
+
+        if (!teaches && !homeroom) {
+          throw new ForbiddenError("You can only post announcements to class sections assigned to you.");
+        }
+      }
+
+      const notice = await tx.announcement.create({
+        data: {
+          tenantId: tenant.id,
+          sectionId: input.sectionId || null,
+          createdBy: membership.userId,
+          title: input.title,
+          content: input.body,
+          audience: [...new Set(input.audience)],
+          priority: input.priority,
+          pinned: input.pinned ?? false,
+          publishedAt: new Date(),
+        },
+        include: { creator: { select: { id: true, name: true } } },
       });
-      if (!section) {
-        throw new NotFoundError("Selected class section was not found in this school.");
-      }
-    }
 
-    // Teachers must be assigned to the section and cannot post school-wide
-    if (membership.role === "TEACHER") {
-      if (!input.sectionId) {
-        throw new ForbiddenError(
-          "Teachers cannot post school-wide announcements. Please choose an assigned class section.",
-        );
-      }
-
-      const teacher = await prisma.teacher.findFirst({
-        where: { tenantId: tenant.id, userId: membership.userId },
-        select: { id: true },
-      });
-
-      if (!teacher) {
-        throw new ForbiddenError("Your account is not linked to a teacher profile in this school.");
-      }
-
-      const teaches = await prisma.teachingAssignment.findFirst({
-        where: { tenantId: tenant.id, teacherId: teacher.id, sectionId: input.sectionId },
-        select: { id: true },
-      });
-
-      const homeroom = teaches
-        ? null
-        : await prisma.schoolClass.findFirst({
-            where: {
-              tenantId: tenant.id,
-              homeroomTeacherId: teacher.id,
-              sections: { some: { id: input.sectionId } },
-            },
-            select: { id: true },
-          });
-
-      if (!teaches && !homeroom) {
-        throw new ForbiddenError("You can only post announcements to class sections assigned to you.");
-      }
-    }
-
-    const notice = await prisma.announcement.create({
-      data: {
-        tenantId: tenant.id,
-        sectionId: input.sectionId || null,
-        createdBy: membership.userId,
-        title: input.title,
-        content: input.body,
-        audience: [...new Set(input.audience)],
-        priority: input.priority,
-        pinned: input.pinned ?? false,
-        publishedAt: new Date(),
-      },
-      include: { creator: { select: { id: true, name: true } } },
+      return NextResponse.json(formatNotice(notice), { status: 201 });
     });
-
-    return NextResponse.json(formatNotice(notice), { status: 201 });
   } catch (error) {
     return handleApiError(error);
   }

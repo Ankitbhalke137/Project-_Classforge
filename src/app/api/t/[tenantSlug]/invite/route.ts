@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { hash } from "bcryptjs";
-import { MembershipRole } from "@prisma/client";
+import { MembershipRole, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { ConflictError, NotFoundError, handleApiError } from "@/lib/errors";
 import { sendCredentialsEmail, appUrl } from "@/lib/mail";
 
@@ -20,9 +20,13 @@ function generateTemporaryPassword(): string {
   return randomBytes(12).toString("base64url");
 }
 
-async function generateUniqueAdmissionNo(tenantId: string, preferred?: string): Promise<string> {
+async function generateUniqueAdmissionNo(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  preferred?: string,
+): Promise<string> {
   if (preferred) {
-    const existing = await prisma.student.findUnique({
+    const existing = await tx.student.findUnique({
       where: { tenantId_admissionNo: { tenantId, admissionNo: preferred } },
       select: { id: true },
     });
@@ -37,7 +41,7 @@ async function generateUniqueAdmissionNo(tenantId: string, preferred?: string): 
   const year = new Date().getFullYear();
   for (let attempt = 0; attempt < 10; attempt++) {
     const candidate = `STU-${year}-${randomBytes(3).toString("hex").toUpperCase()}`;
-    const existing = await prisma.student.findUnique({
+    const existing = await tx.student.findUnique({
       where: { tenantId_admissionNo: { tenantId, admissionNo: candidate } },
       select: { id: true },
     });
@@ -121,12 +125,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
       });
     }
 
-    await prisma.membership.create({
-      data: {
-        tenantId: tenant.id,
-        userId: user.id,
-        role: role as MembershipRole,
-      },
+    await withTenant(tenant.id, async (tx) => {
+      await tx.membership.create({
+        data: {
+          tenantId: tenant.id,
+          userId: user.id,
+          role: role as MembershipRole,
+        },
+      });
     });
 
     const [derivedFirst, ...rest] = name.trim().split(/\s+/);
@@ -135,21 +141,23 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
 
     // An invited teacher must appear on the staff roster.
     if (role === "TEACHER") {
-      const alreadyOnStaff = await prisma.teacher.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-        select: { id: true },
-      });
-
-      if (!alreadyOnStaff) {
-        await prisma.teacher.create({
-          data: {
-            tenantId: tenant.id,
-            userId: user.id,
-            firstName: first,
-            lastName: last,
-          },
+      await withTenant(tenant.id, async (tx) => {
+        const alreadyOnStaff = await tx.teacher.findFirst({
+          where: { tenantId: tenant.id, userId: user.id },
+          select: { id: true },
         });
-      }
+
+        if (!alreadyOnStaff) {
+          await tx.teacher.create({
+            data: {
+              tenantId: tenant.id,
+              userId: user.id,
+              firstName: first,
+              lastName: last,
+            },
+          });
+        }
+      });
     }
 
     // An invited student must appear on the student roster with an admission number.
@@ -157,68 +165,72 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
     let admissionNo: string | undefined;
 
     if (role === "STUDENT") {
-      let student = await prisma.student.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-      });
-
-      if (!student) {
-        const finalAdmissionNo = await generateUniqueAdmissionNo(tenant.id, input.admissionNo);
-        student = await prisma.student.create({
-          data: {
-            tenantId: tenant.id,
-            userId: user.id,
-            firstName: first,
-            lastName: last,
-            admissionNo: finalAdmissionNo,
-            status: "ACTIVE",
-          },
-        });
-      }
-
-      studentId = student.id;
-      admissionNo = student.admissionNo;
-
-      // If a section is specified, enroll the student
-      if (input.sectionId) {
-        const section = await prisma.section.findFirst({
-          where: { id: input.sectionId, tenantId: tenant.id },
-          include: { schoolClass: true },
+      const student = await withTenant(tenant.id, async (tx) => {
+        let currentStudent = await tx.student.findFirst({
+          where: { tenantId: tenant.id, userId: user.id },
         });
 
-        if (!section) {
-          throw new NotFoundError("Selected class section was not found in this school.");
-        }
-
-        let academicYearId = input.academicYearId || section.schoolClass.academicYearId;
-        if (!academicYearId) {
-          const activeYear = await prisma.academicYear.findFirst({
-            where: { tenantId: tenant.id, status: "ACTIVE" },
-          });
-          academicYearId = activeYear?.id ?? section.schoolClass.academicYearId;
-        }
-
-        const existingEnrolment = await prisma.enrolment.findFirst({
-          where: {
-            tenantId: tenant.id,
-            studentId: student.id,
-            sectionId: section.id,
-            academicYearId,
-            status: "ACTIVE",
-          },
-        });
-
-        if (!existingEnrolment) {
-          await prisma.enrolment.create({
+        if (!currentStudent) {
+          const finalAdmissionNo = await generateUniqueAdmissionNo(tx, tenant.id, input.admissionNo);
+          currentStudent = await tx.student.create({
             data: {
               tenantId: tenant.id,
-              studentId: student.id,
+              userId: user.id,
+              firstName: first,
+              lastName: last,
+              admissionNo: finalAdmissionNo,
+              status: "ACTIVE",
+            },
+          });
+        }
+
+        // If a section is specified, enroll the student
+        if (input.sectionId) {
+          const section = await tx.section.findFirst({
+            where: { id: input.sectionId, tenantId: tenant.id },
+            include: { schoolClass: true },
+          });
+
+          if (!section) {
+            throw new NotFoundError("Selected class section was not found in this school.");
+          }
+
+          let academicYearId = input.academicYearId || section.schoolClass.academicYearId;
+          if (!academicYearId) {
+            const activeYear = await tx.academicYear.findFirst({
+              where: { tenantId: tenant.id, status: "ACTIVE" },
+            });
+            academicYearId = activeYear?.id ?? section.schoolClass.academicYearId;
+          }
+
+          const existingEnrolment = await tx.enrolment.findFirst({
+            where: {
+              tenantId: tenant.id,
+              studentId: currentStudent.id,
               sectionId: section.id,
               academicYearId,
               status: "ACTIVE",
             },
           });
+
+          if (!existingEnrolment) {
+            await tx.enrolment.create({
+              data: {
+                tenantId: tenant.id,
+                studentId: currentStudent.id,
+                sectionId: section.id,
+                academicYearId,
+                status: "ACTIVE",
+              },
+            });
+          }
         }
-      }
+
+        return currentStudent;
+      });
+
+      studentId = student.id;
+      admissionNo = student.admissionNo;
     }
 
     let emailSent = false;
