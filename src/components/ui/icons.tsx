@@ -243,14 +243,6 @@ export const GraduationIcon = (props: SVGProps<SVGSVGElement>) => (
 
 /* ---------- Heritage Emerald navigation ---------- */
 
-export const FeesIcon = (props: SVGProps<SVGSVGElement>) => (
-  <Icon {...props}>
-    <rect x="2.5" y="6" width="19" height="12" rx="2" />
-    <circle cx="12" cy="12" r="2.5" />
-    <path d="M6 10v4M18 10v4" />
-  </Icon>
-);
-
 export const ReportsIcon = (props: SVGProps<SVGSVGElement>) => (
   <Icon {...props}>
     <path d="M3 20h18" />
@@ -431,13 +423,6 @@ export const ClipboardCheckIcon = (props: SVGProps<SVGSVGElement>) => (
     <path d="M9 4.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2h-2" />
     <rect x="9" y="2.5" width="6" height="4" rx="1" />
     <path d="m8.5 13 2.2 2.2L15.5 10" />
-  </Icon>
-);
-
-export const PaymentsIcon = (props: SVGProps<SVGSVGElement>) => (
-  <Icon {...props}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M14.8 9.2a3.2 3.2 0 0 0-5.6 1.1c-.4 1.6.6 2.4 2.8 3 2.2.6 3.2 1.4 2.8 3a3.2 3.2 0 0 1-5.6 1.1M12 6.5v11" />
   </Icon>
 );
 
