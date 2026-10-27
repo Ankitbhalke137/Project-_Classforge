@@ -49,6 +49,7 @@ model Tenant {
   timetablePeriods        TimetablePeriod[]
   timetableSlots          TimetableSlot[]
   notificationPreferences NotificationPreference[]
+  attendanceSettings      AttendanceSettings?
 
   @@map("tenants")
 }
@@ -64,6 +65,8 @@ model User {
    * The client blocks the app until it is cleared by a real password change.
    */
   mustChangePassword Boolean        @default(false) @map("must_change_password")
+  passwordResetToken String?        @map("password_reset_token")
+  passwordResetExpires DateTime?    @map("password_reset_expires")
   createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
   refreshTokens      RefreshToken[]
 
@@ -414,6 +417,21 @@ model AttendanceRecord {
   @@unique([tenantId, sectionId, studentId, attendanceDate])
   @@index([tenantId, studentId, attendanceDate])
   @@map("attendance_records")
+}
+
+model AttendanceSettings {
+  id                        String   @id @default(uuid()) @db.Uuid
+  tenantId                  String   @map("tenant_id") @db.Uuid
+  allowTeacherEdit          Boolean  @default(true) @map("allow_teacher_edit")
+  requireParentNoteForExcused Boolean @default(false) @map("require_parent_note_for_excused")
+  lateThresholdMinutes      Int      @default(15) @map("late_threshold_minutes")
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId])
+  @@index([tenantId])
+  @@map("attendance_settings")
 }
 
 model Exam {

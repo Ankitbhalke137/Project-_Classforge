@@ -708,6 +708,30 @@ export const schoolApi = {
       body,
     }),
 
+  /* --- Attendance settings --- */
+  getAttendanceSettings: (schoolSlug: string) =>
+    api<{
+      allowTeacherEdit: boolean;
+      requireParentNoteForExcused: boolean;
+      lateThresholdMinutes: number;
+    }>(`/api/t/${schoolSlug}/settings/attendance`),
+  saveAttendanceSettings: (
+    schoolSlug: string,
+    body: {
+      allowTeacherEdit: boolean;
+      requireParentNoteForExcused: boolean;
+      lateThresholdMinutes: number;
+    },
+  ) =>
+    api<{
+      allowTeacherEdit: boolean;
+      requireParentNoteForExcused: boolean;
+      lateThresholdMinutes: number;
+    }>(`/api/t/${schoolSlug}/settings/attendance`, {
+      method: "PUT",
+      body,
+    }),
+
   /* --- Roll-up for the dashboard --- */
   getDashboard: (schoolSlug: string) => api<SchoolDashboard>(`/api/t/${schoolSlug}/dashboard`),
 };
