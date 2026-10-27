@@ -103,11 +103,11 @@ export async function POST(request: NextRequest) {
 
     if (user) {
       const existing = await prisma.membership.findFirst({
-        where: { tenantId: school.id, userId: user.id },
+        where: { tenantId: school.id, userId: user.id, role },
       });
       if (existing) {
-        throw new ConflictError("This person already has access to that school.", {
-          email: "Already a member of this school.",
+        throw new ConflictError("This person already has that role in this school.", {
+          email: "Already has this role in this school.",
         });
       }
     }
