@@ -36,7 +36,21 @@ export const updateTeacherSchema = z
   .object({
     firstName: z.string().trim().min(1, "First name cannot be empty").max(100).optional(),
     lastName: z.string().trim().min(1, "Last name cannot be empty").max(100).optional(),
+    email: z
+      .string()
+      .trim()
+      .email("Enter a valid email address.")
+      .transform((email) => email.toLowerCase())
+      .optional(),
     ...profileFields,
+    classAssignments: z
+      .array(
+        z.object({
+          sectionId: z.string().uuid("Invalid section ID"),
+          subjectId: z.string().uuid("Invalid subject ID"),
+        }),
+      )
+      .optional(),
     status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
@@ -99,6 +113,10 @@ export function formatTeacher(teacher: TeacherWithRelations) {
     joinedOn: teacher.createdAt.toISOString(),
     subjectIds: [...new Set(teacher.teachingAssignments.map((row) => row.subjectId))],
     classIds: [...new Set(teacher.teachingAssignments.map((row) => row.sectionId))],
+    classAssignments: teacher.teachingAssignments.map((row) => ({
+      sectionId: row.sectionId,
+      subjectId: row.subjectId,
+    })),
     status:
       teacher.user?.memberships[0]?.status === MembershipStatus.INACTIVE
         ? ("INACTIVE" as const)
@@ -290,6 +308,33 @@ export async function updateTeacher(tenantId: string, teacherId: string, rawInpu
   await prisma.$transaction(async (tx) => {
     if (Object.keys(profile).length > 0) {
       await tx.teacher.update({ where: { id: teacherId }, data: profile });
+    }
+
+    // Email lives on the global User account, linked to this teacher via userId.
+    if (input.email !== undefined && current.userId && input.email !== current.user?.email) {
+      const taken = await prisma.user.findFirst({
+        where: { email: input.email, NOT: { id: current.userId } },
+      });
+      if (taken) {
+        throw new ConflictError("This email is already in use.", { email: "Already in use" });
+      }
+      await tx.user.update({ where: { id: current.userId }, data: { email: input.email } });
+    }
+
+    // Sync class assignments: replace all existing teaching assignments for this teacher.
+    if (input.classAssignments !== undefined) {
+      await tx.teachingAssignment.deleteMany({
+        where: { tenantId, teacherId },
+      });
+      await tx.teachingAssignment.createMany({
+        data: input.classAssignments.map((a) => ({
+          tenantId,
+          teacherId,
+          sectionId: a.sectionId,
+          subjectId: a.subjectId,
+        })),
+        skipDuplicates: true,
+      });
     }
 
     if (nextName && current.userId) {

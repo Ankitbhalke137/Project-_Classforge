@@ -332,10 +332,12 @@ export const schoolApi = {
     body: {
       firstName?: string;
       lastName?: string;
+      email?: string;
       employeeNo?: string | null;
       phone?: string | null;
       qualification?: string | null;
       designation?: string | null;
+      classAssignments?: { sectionId: string; subjectId: string }[];
       status?: "ACTIVE" | "INACTIVE";
     },
   ) => api<Teacher>(`/api/t/${schoolSlug}/teachers/${id}`, { method: "PATCH", body }),

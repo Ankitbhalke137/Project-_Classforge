@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { RequireArea } from "@/components/auth/guards";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import { EmptyState, PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
 import { ApiError, schoolApi } from "@/lib/api";
 import { useApi, useCanPerform, useDebounced, useMembership } from "@/lib/hooks";
-import type { Paginated, Teacher } from "@/types";
+import type { Paginated, SchoolClass, Teacher } from "@/types";
 
 const SORT_OPTIONS = [
   { value: "name:asc", label: "Name A–Z" },
@@ -21,6 +21,13 @@ const SORT_OPTIONS = [
   { value: "employeeNo:asc", label: "Employee no." },
   { value: "createdAt:desc", label: "Newest first" },
 ] as const;
+
+type SectionOption = {
+  id: string;
+  name: string;
+  classId: string;
+  className: string;
+};
 
 export default function TeachersPage() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
@@ -327,6 +334,7 @@ type FormState = {
   phone: string;
   qualification: string;
   designation: string;
+  classAssignments: { sectionId: string; subjectId: string }[];
 };
 
 function splitName(name: string): { firstName: string; lastName: string } {
@@ -345,6 +353,7 @@ function initialForm(teacher: Teacher | null): FormState {
     phone: teacher?.phone ?? "",
     qualification: teacher?.qualification ?? "",
     designation: teacher?.designation ?? "",
+    classAssignments: teacher?.classAssignments ?? [],
   };
 }
 
@@ -375,6 +384,50 @@ function TeacherFormModal({
 
   const editing = teacher !== null;
 
+  // Sections available in this school (flat list with class info).
+  const [sections, setSections] = useState<SectionOption[]>([]);
+  // All subjects in this school.
+  const [allSubjects, setAllSubjects] = useState<Array<{ id: string; name: string; classId: string }>>(
+    [],
+  );
+  const [sectionsLoaded, setSectionsLoaded] = useState(false);
+
+  // Sections for the "add assignment" dropdown.
+  const [newSectionId, setNewSectionId] = useState<string | null>(null);
+  // Subjects filtered to the selected section's class.
+  const [newSubjectId, setNewSubjectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const [classesResult, subjectsResult] = await Promise.all([
+        schoolApi.listClasses(schoolSlug),
+        schoolApi.listSubjects(schoolSlug),
+      ]);
+      if (cancelled) return;
+      const classes = Array.isArray(classesResult) ? classesResult : (classesResult as { data?: SchoolClass[] })?.data ?? [];
+      const sectionOptions: SectionOption[] = [];
+      classes.forEach((c) => {
+        sectionOptions.push({
+          id: c.id,
+          name: c.name,
+          classId: c.classId ?? c.id,
+          className: c.grade,
+        });
+      });
+      setSections(sectionOptions);
+      const subjects = Array.isArray(subjectsResult)
+        ? subjectsResult
+        : (subjectsResult as { data?: Array<{ id: string; name: string; classId: string }> })?.data ?? [];
+      setAllSubjects(subjects);
+      setSectionsLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, schoolSlug]);
+
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current: FormState) => ({ ...current, [key]: value }));
     if (errors[key]) {
@@ -384,6 +437,29 @@ function TeacherFormModal({
         return next;
       });
     }
+  }
+
+  function handleAddAssignment() {
+    if (!newSectionId || !newSubjectId) return;
+    const already = form.classAssignments.some(
+      (a) => a.sectionId === newSectionId && a.subjectId === newSubjectId,
+    );
+    if (already) return;
+    set("classAssignments", [
+      ...form.classAssignments,
+      { sectionId: newSectionId, subjectId: newSubjectId },
+    ]);
+    setNewSectionId(null);
+    setNewSubjectId(null);
+  }
+
+  function handleRemoveAssignment(index: number) {
+    set("classAssignments", form.classAssignments.filter((_, i) => i !== index));
+  }
+
+  function sectionFor(sectionId: string | null): string | undefined {
+    if (!sectionId) return undefined;
+    return sections.find((s) => s.id === sectionId)?.classId;
   }
 
   function validate(): boolean {
@@ -408,10 +484,12 @@ function TeacherFormModal({
     const profile = {
       firstName: form.firstName.trim(),
       lastName: form.lastName.trim(),
+      ...(form.email.trim() ? { email: form.email.trim() } : {}),
       employeeNo: form.employeeNo.trim() || null,
       phone: form.phone.trim() || null,
       qualification: form.qualification.trim() || null,
       designation: form.designation.trim() || null,
+      classAssignments: form.classAssignments,
     };
 
     try {
@@ -423,6 +501,14 @@ function TeacherFormModal({
           ...profile,
           email: form.email.trim(),
         });
+        // Create teaching assignments for the new teacher.
+        for (const a of form.classAssignments) {
+          await schoolApi.createTeachingAssignment(schoolSlug, {
+            teacherId: result.teacher.id,
+            sectionId: a.sectionId,
+            subjectId: a.subjectId,
+          });
+        }
         setCreated(result);
       }
     } catch (err) {
@@ -559,12 +645,69 @@ function TeacherFormModal({
           />
         </div>
 
-        {!editing ? (
-          <p className="text-xs text-body">
-            An email that already has an account is added to this school without changing its
-            password. A new email gets a temporary password by email.
+        {/* Classes & Subjects assignment */}
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold text-ink mb-3">Classes &amp; Subjects</h3>
+          <p className="text-xs text-body mb-3">
+            Assign this teacher to class sections and subjects. A teacher can only see and mark
+            attendance for classes they are assigned to.
           </p>
-        ) : null}
+
+          {/* Add new assignment */}
+          <div className="grid gap-2 sm:grid-cols-4 items-end mb-4">
+            <Select
+              label="Class"
+              value={newSectionId ?? ""}
+              onChange={(event) => setNewSectionId(event.target.value)}
+              options={sections.map((s) => ({ value: s.id, label: s.name }))}
+            />
+            <Select
+              label="Subject"
+              value={newSubjectId ?? ""}
+              onChange={(event) => setNewSubjectId(event.target.value)}
+              options={allSubjects
+                .filter((s) => !newSectionId || s.classId === sectionFor(newSectionId))
+                .map((s) => ({ value: s.id, label: s.name }))}
+              disabled={!newSectionId}
+            />
+            <Button
+              onClick={handleAddAssignment}
+              disabled={!newSectionId || !newSubjectId || sectionsLoaded === false}
+            >
+              Add
+            </Button>
+          </div>
+
+          {/* Current assignments */}
+          {form.classAssignments.length > 0 ? (
+            <div className="border border-line rounded-xl p-3">
+              <ul className="divide-y divide-line">
+                {form.classAssignments.map((a, index) => {
+                  const section = sections.find((s) => s.id === a.sectionId);
+                  const subject = allSubjects.find((s) => s.id === a.subjectId);
+                  return (
+                    <li key={index} className="flex items-center justify-between py-2">
+                      <span className="text-sm text-body">
+                        {section?.name ?? "Unknown class"} · {subject?.name ?? "Unknown subject"}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveAssignment(index)}
+                      >
+                        Remove
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-xs text-body">
+              No classes assigned. This teacher will not see any classes on their dashboard.
+            </p>
+          )}
+        </div>
       </form>
     </Modal>
   );
