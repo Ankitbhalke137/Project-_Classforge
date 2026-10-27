@@ -25,7 +25,8 @@
     "test:rate-limit": "tsx scripts/test-rate-limit.ts",
     "test:csrf": "tsx scripts/test-csrf.ts",
     "test:rls": "tsx scripts/verify-rls-security.ts",
-    "test:security": "tsx scripts/test-rate-limit.ts && tsx scripts/test-csrf.ts && tsx scripts/verify-rls-security.ts"
+    "test:tenant-auth": "tsx scripts/test-tenant-authorization.ts",
+    "test:security": "tsx scripts/test-rate-limit.ts && tsx scripts/test-csrf.ts && tsx scripts/verify-rls-security.ts && tsx scripts/test-tenant-authorization.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

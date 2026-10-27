@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 
 /**
@@ -17,29 +17,31 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
     const { tenantSlug } = await context.params;
     const { tenant, user, membership } = await resolveTenantContext(request, tenantSlug);
 
-    const [student, teacher] = await Promise.all([
-      prisma.student.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-        include: {
-          enrolments: {
-            where: { status: "ACTIVE" },
-            take: 1,
-            select: {
-              sectionId: true,
-              section: {
-                select: {
-                  name: true,
-                  schoolClass: { select: { name: true } },
+    const [student, teacher] = await withTenant(tenant.id, async (tx) =>
+      Promise.all([
+        tx.student.findFirst({
+          where: { tenantId: tenant.id, userId: user.id },
+          include: {
+            enrolments: {
+              where: { status: "ACTIVE" },
+              take: 1,
+              select: {
+                sectionId: true,
+                section: {
+                  select: {
+                    name: true,
+                    schoolClass: { select: { name: true } },
+                  },
                 },
               },
             },
           },
-        },
-      }),
-      prisma.teacher.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-      }),
-    ]);
+        }),
+        tx.teacher.findFirst({
+          where: { tenantId: tenant.id, userId: user.id },
+        }),
+      ])
+    );
 
     return NextResponse.json({
       role: membership.role,

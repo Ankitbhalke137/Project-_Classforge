@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 import { createClass, listClasses } from "@/lib/services/academic-service";
 
@@ -29,15 +29,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // A student sees only the section they are enrolled in. The class screen is
     // not a window into every other class in the school.
     if (membership.role === "STUDENT") {
-      const student = await prisma.student.findFirst({
-        where: { tenantId: tenant.id, userId: user.id },
-        select: {
-          enrolments: {
-            where: { status: "ACTIVE" },
-            select: { sectionId: true },
+      const student = await withTenant(tenant.id, async (tx) =>
+        tx.student.findFirst({
+          where: { tenantId: tenant.id, userId: user.id },
+          select: {
+            enrolments: {
+              where: { status: "ACTIVE" },
+              select: { sectionId: true },
+            },
           },
-        },
-      });
+        })
+      );
       const ownSections = new Set(
         student?.enrolments.map((row) => row.sectionId) ?? [],
       );

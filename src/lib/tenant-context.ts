@@ -52,6 +52,27 @@ export async function withTenant<T>(
 }
 
 /**
+ * Scoped query context helper for user-level bootstrap access.
+ *
+ * Sets transaction-local `app.current_user_id` so an authenticated user can discover
+ * and verify their own school memberships across multiple schools under PostgreSQL RLS
+ * without weakening tenant isolation or allowing cross-tenant user enumeration.
+ */
+export async function withUserContext<T>(
+  userId: string,
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+  options: { timeout?: number } = {},
+): Promise<T> {
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+      return callback(tx);
+    },
+    { timeout: options.timeout ?? 15_000 },
+  );
+}
+
+/**
  * Extracts and verifies the access token from request cookies or Authorization header.
  * Returns the authenticated user record with their active school memberships.
  *
@@ -109,16 +130,18 @@ export async function authenticateRequest(request: Request | NextRequest) {
     }
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: payload.userId },
-    include: {
-      memberships: {
-        where: { status: "ACTIVE" },
-        include: {
-          tenant: true,
+  const user = await withUserContext(payload.userId, async (tx) => {
+    return tx.user.findUnique({
+      where: { id: payload.userId },
+      include: {
+        memberships: {
+          where: { status: "ACTIVE" },
+          include: {
+            tenant: true,
+          },
         },
       },
-    },
+    });
   });
 
   if (!user) {

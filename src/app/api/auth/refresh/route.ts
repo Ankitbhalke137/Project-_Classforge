@@ -10,6 +10,7 @@ import {
 } from "@/lib/auth-cookies";
 import { createStoredRefreshToken, consumeRefreshToken } from "@/lib/refresh-tokens";
 import { generateCsrfToken, setCsrfCookie, validateOrigin } from "@/lib/csrf";
+import { withUserContext } from "@/lib/tenant-context";
 
 /**
  * Trades the refresh cookie for a new access token.
@@ -41,12 +42,40 @@ export async function POST(request: Request) {
     const used = await consumeRefreshToken(token);
     if(!used) return expired();
 
-    const user = await prisma.user.findUnique({ where:{ id: used.userId }});
+    const user = await withUserContext(used.userId, async (tx) => {
+      return tx.user.findUnique({
+        where: { id: used.userId },
+        include: {
+          memberships: {
+            where: { status: "ACTIVE" },
+            include: {
+              tenant: {
+                select: { id: true, slug: true, status: true },
+              },
+            },
+          },
+        },
+      });
+    });
     if(!user) return expired();
+
+    const isSuperAdmin = user.platformRole === "SUPER_ADMIN";
+    const schools = user.memberships
+      .filter((m) => m.tenant.status === "ACTIVE")
+      .map((m) => ({
+        schoolId: m.tenant.id,
+        schoolSlug: m.tenant.slug,
+        role: m.role,
+      }));
 
     // Keep the same family so a chain of refreshes stays traceable to one login.
     const { token: refreshToken } = await createStoredRefreshToken(user.id, used.familyId);
-    const accessToken = await createAccessToken({ userId: user.id, email: user.email });
+    const accessToken = await createAccessToken({
+      userId: user.id,
+      email: user.email,
+      isSuperAdmin,
+      memberships: schools,
+    });
 
     const csrfToken = generateCsrfToken(user.id);
 

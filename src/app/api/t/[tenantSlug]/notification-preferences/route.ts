@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 
 const savePreferencesSchema = z.object({
@@ -24,9 +24,11 @@ export async function GET(
     const { tenantSlug } = await context.params;
     const { tenant, user } = await resolveTenantContext(request, tenantSlug);
 
-    const preferences = await prisma.notificationPreference.findUnique({
-      where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
-    });
+    const preferences = await withTenant(tenant.id, async (tx) =>
+      tx.notificationPreference.findUnique({
+        where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
+      })
+    );
 
     return NextResponse.json({
       inAppNotifications: preferences?.inAppNotifications ?? true,
@@ -55,11 +57,13 @@ export async function PUT(
     const body: unknown = await request.json().catch(() => null);
     const input = savePreferencesSchema.parse(body);
 
-    const saved = await prisma.notificationPreference.upsert({
-      where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
-      create: { tenantId: tenant.id, userId: user.id, ...input },
-      update: input,
-    });
+    const saved = await withTenant(tenant.id, async (tx) =>
+      tx.notificationPreference.upsert({
+        where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
+        create: { tenantId: tenant.id, userId: user.id, ...input },
+        update: input,
+      })
+    );
 
     return NextResponse.json({
       inAppNotifications: saved.inAppNotifications,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError, NotFoundError } from "@/lib/errors";
 
 /**
@@ -47,26 +47,32 @@ export async function GET(
       `${/^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : localToday}T00:00:00.000Z`,
     );
 
-    const enrolments = await prisma.enrolment.findMany({
-      where: { tenantId: tenant.id, sectionId, status: "ACTIVE" },
-      include: {
-        student: {
-          select: { id: true, firstName: true, lastName: true, admissionNo: true },
+    const enrolmentsAndRecords = await withTenant(tenant.id, async (tx) => {
+      const enrolments = await tx.enrolment.findMany({
+        where: { tenantId: tenant.id, sectionId, status: "ACTIVE" },
+        include: {
+          student: {
+            select: { id: true, firstName: true, lastName: true, admissionNo: true },
+          },
         },
-      },
-      orderBy: { student: { admissionNo: "asc" } },
+        orderBy: { student: { admissionNo: "asc" } },
+      });
+
+      const records = await tx.attendanceRecord.findMany({
+        where: { tenantId: tenant.id, sectionId, attendanceDate: day },
+      });
+
+      const section = await tx.section.findFirst({
+        where: { tenantId: tenant.id, id: sectionId },
+        include: { schoolClass: { select: { id: true, name: true } } },
+      });
+
+      if (!section) throw new NotFoundError("That section was not found.");
+
+      return { enrolments, records, section };
     });
 
-    const records = await prisma.attendanceRecord.findMany({
-      where: { tenantId: tenant.id, sectionId, attendanceDate: day },
-    });
-
-    const section = await prisma.section.findFirst({
-      where: { tenantId: tenant.id, id: sectionId },
-      include: { schoolClass: { select: { id: true, name: true } } },
-    });
-
-    if (!section) throw new NotFoundError("That section was not found.");
+    const { enrolments, records, section } = enrolmentsAndRecords;
 
     return NextResponse.json({
       date: rawDate,

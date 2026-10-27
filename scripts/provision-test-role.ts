@@ -37,6 +37,22 @@ async function main() {
       $$;
     `);
 
+    await prisma.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_policy WHERE polname = 'user_membership_discovery' AND polrelid = 'memberships'::regclass
+        ) THEN
+          CREATE POLICY user_membership_discovery ON memberships
+          FOR SELECT
+          USING (
+            user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+          );
+        END IF;
+      END
+      $$;
+    `);
+
     // Determine target database name safely
     let dbName = "classforge_ci_test";
     try {
@@ -50,6 +66,30 @@ async function main() {
     await prisma.$executeRawUnsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO classforge_app;`);
     await prisma.$executeRawUnsafe(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO classforge_app;`);
     await prisma.$executeRawUnsafe(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO classforge_app;`);
+
+    // Ensure classforge_app cannot create tables in schema public
+    await prisma.$executeRawUnsafe(`REVOKE CREATE ON SCHEMA public FROM classforge_app;`);
+
+    // Verify classforge_app owns no tables in public schema
+    const ownedTables: any[] = await prisma.$queryRawUnsafe(`
+      SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tableowner = 'classforge_app';
+    `);
+    if (ownedTables.length > 0) {
+      console.warn("⚠️ Warning: classforge_app owns tables. Reassigning to current user...");
+      await prisma.$executeRawUnsafe(`REASSIGN OWNED BY classforge_app TO CURRENT_USER;`);
+    }
+
+    // Ensure role does not inherit membership in superuser or bypassrls roles
+    const bypassRoles: any[] = await prisma.$queryRawUnsafe(`
+      SELECT r.rolname 
+      FROM pg_roles r 
+      JOIN pg_auth_members m ON r.oid = m.roleid 
+      JOIN pg_roles m_role ON m_role.oid = m.member 
+      WHERE m_role.rolname = 'classforge_app' AND (r.rolsuper OR r.rolbypassrls);
+    `);
+    for (const r of bypassRoles) {
+      await prisma.$executeRawUnsafe(`REVOKE "${r.rolname}" FROM classforge_app;`);
+    }
 
     console.log("✅ Role 'classforge_app' successfully configured without superuser or BYPASSRLS permissions.");
   } finally {

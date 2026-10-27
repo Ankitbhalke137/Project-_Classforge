@@ -7,6 +7,7 @@ import { ACCESS_TOKEN_COOKIE,REFRESH_TOKEN_COOKIE,ACCESS_TOKEN_MAX_AGE,REFRESH_T
 import { createStoredRefreshToken } from "@/lib/refresh-tokens";
 import { checkLoginRateLimit, createRateLimitResponse, resetLoginRateLimit } from "@/lib/rate-limit";
 import { generateCsrfToken, setCsrfCookie, validateOrigin } from "@/lib/csrf";
+import { withUserContext } from "@/lib/tenant-context";
 
 const loginSchema = z.object({
   email: z
@@ -51,28 +52,42 @@ export async function POST(request:Request){
       );
     }
     const {email,password} = parsed.data;
-    const user = await prisma.user.findUnique({
+    const baseUser = await prisma.user.findUnique({
       where: { email },
-      include: {
-        memberships: {
-          where : {status: "ACTIVE"},
-          include: {
-            tenant: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                status: true
+    });
+    if(!baseUser || !(await compare(password, baseUser.passwordHash))){
+      return NextResponse.json(
+        {message: "Invalid email or password"},
+        {status:401}
+      );
+    }
+
+    // Resolve user's active memberships using user-scoped bootstrap context under RLS
+    const user = await withUserContext(baseUser.id, async (tx) => {
+      return tx.user.findUnique({
+        where: { id: baseUser.id },
+        include: {
+          memberships: {
+            where: { status: "ACTIVE" },
+            include: {
+              tenant: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  status: true,
+                },
               },
             },
           },
         },
-      },
+      });
     });
-    if(!user || !(await compare(password,user.passwordHash))){
+
+    if (!user) {
       return NextResponse.json(
-        {message: "Invalid email or password"},
-        {status:401}
+        { message: "Invalid email or password" },
+        { status: 401 }
       );
     }
 
@@ -101,7 +116,13 @@ export async function POST(request:Request){
 
     const accessToken = await createAccessToken({
       userId : user.id,
-      email : user.email
+      email : user.email,
+      isSuperAdmin,
+      memberships: schools.map((s) => ({
+        schoolId: s.schoolId,
+        schoolSlug: s.schoolSlug,
+        role: s.role,
+      })),
     });
     const {token: refreshToken} = await createStoredRefreshToken(user.id);
 

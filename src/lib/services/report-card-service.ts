@@ -1,10 +1,13 @@
 /**
  * Report card service: computes published exam results, grade distributions, and student/class ranking.
  */
-import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+import { withTenant } from "@/lib/tenant-context";
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { GRADE_BANDS, type Grade } from "@/types";
 import { getTeacherAssignedSectionIds, type UserContext } from "@/lib/services/student-service";
+
+type DbClient = Prisma.TransactionClient;
 
 type ReportRow = {
   examId: string;
@@ -62,6 +65,7 @@ function positionOf(
  * as if it were final.
  */
 async function buildReportCard(
+  tx: DbClient,
   tenantId: string,
   studentId: string,
   term: string,
@@ -81,7 +85,7 @@ async function buildReportCard(
   classRank: number | null;
   totalStudents: number;
 }> {
-  const student = await prisma.student.findFirst({
+  const student = await tx.student.findFirst({
     where: { id: studentId, tenantId },
     include: {
       enrolments: {
@@ -101,7 +105,7 @@ async function buildReportCard(
     throw new BadRequestError("This student has no active class, so there is no report card.");
   }
 
-  const exams = await prisma.exam.findMany({
+  const exams = await tx.exam.findMany({
     where: {
       tenantId,
       sectionId: enrolment.sectionId,
@@ -138,9 +142,9 @@ async function buildReportCard(
   const percentage = maxTotal > 0 ? Math.round((totalMarks / maxTotal) * 100) : 0;
 
   const [classEntries, schoolEntries, totalStudents] = await Promise.all([
-    rankEntriesForExams(tenantId, exams.map((exam) => exam.id), studentId),
-    rankEntriesForTerm(tenantId, term),
-    prisma.enrolment.count({
+    rankEntriesForExams(tx, tenantId, exams.map((exam) => exam.id), studentId),
+    rankEntriesForTerm(tx, tenantId, term),
+    tx.enrolment.count({
       where: { tenantId, sectionId: enrolment.sectionId, status: "ACTIVE" },
     }),
   ]);
@@ -168,17 +172,18 @@ async function buildReportCard(
 
 /** Score totals for one set of exams, used for the class position. */
 async function rankEntriesForExams(
+  tx: DbClient,
   tenantId: string,
   examIds: string[],
   targetStudentId: string,
 ) {
   if (examIds.length === 0) return [];
   const [exams, marks] = await Promise.all([
-    prisma.exam.findMany({
+    tx.exam.findMany({
       where: { tenantId, id: { in: examIds } },
       select: { id: true, maxMarks: true },
     }),
-    prisma.mark.findMany({
+    tx.mark.findMany({
       where: { tenantId, examId: { in: examIds } },
       select: { studentId: true, examId: true, score: true },
     }),
@@ -211,14 +216,14 @@ async function rankEntriesForExams(
  * against the exams of their own section, so a class with more papers is not
  * automatically given a higher maximum.
  */
-async function rankEntriesForTerm(tenantId: string, term: string) {
-  const exams = await prisma.exam.findMany({
+async function rankEntriesForTerm(tx: DbClient, tenantId: string, term: string) {
+  const exams = await tx.exam.findMany({
     where: { tenantId, term, publishedAt: { not: null } },
     select: { id: true, sectionId: true, maxMarks: true },
   });
   if (exams.length === 0) return [];
 
-  const marks = await prisma.mark.findMany({
+  const marks = await tx.mark.findMany({
     where: { tenantId, examId: { in: exams.map((exam) => exam.id) } },
     select: { studentId: true, examId: true, score: true },
   });
@@ -226,7 +231,7 @@ async function rankEntriesForTerm(tenantId: string, term: string) {
 
   const examById = new Map(exams.map((exam) => [exam.id, exam]));
   const studentIds = [...new Set(marks.map((mark) => mark.studentId))];
-  const enrolments = await prisma.enrolment.findMany({
+  const enrolments = await tx.enrolment.findMany({
     where: { tenantId, studentId: { in: studentIds }, status: "ACTIVE" },
     select: { studentId: true, sectionId: true },
   });
@@ -269,43 +274,45 @@ export async function getStudentReportCard(
 ) {
   if (!term.trim()) throw new BadRequestError("Choose a term.", { term: "Term is required" });
 
-  if (userContext.role === "STUDENT") {
-    const own = await prisma.student.findFirst({
-      where: { id: studentId, tenantId, userId: userContext.userId },
-      select: { id: true },
-    });
-    if (!own) throw new ForbiddenError("You may only view your own report card.");
-  }
-
-  if (userContext.role === "TEACHER") {
-    const assignedSectionIds = await getTeacherAssignedSectionIds(
-      prisma,
-      tenantId,
-      userContext.userId,
-    );
-    const student = await prisma.student.findFirst({
-      where: { id: studentId, tenantId },
-      include: {
-        enrolments: {
-          where: { status: "ACTIVE" },
-          select: { sectionId: true },
-        },
-      },
-    });
-    if (!student) {
-      throw new NotFoundError("Student not found.");
+  return withTenant(tenantId, async (tx) => {
+    if (userContext.role === "STUDENT") {
+      const own = await tx.student.findFirst({
+        where: { id: studentId, tenantId, userId: userContext.userId },
+        select: { id: true },
+      });
+      if (!own) throw new ForbiddenError("You may only view your own report card.");
     }
-    const isAssigned = student.enrolments.some((e) =>
-      assignedSectionIds.includes(e.sectionId),
-    );
-    if (!isAssigned) {
-      throw new ForbiddenError(
-        "You can only view report cards for students in classes assigned to you.",
+
+    if (userContext.role === "TEACHER") {
+      const assignedSectionIds = await getTeacherAssignedSectionIds(
+        tx,
+        tenantId,
+        userContext.userId,
       );
+      const student = await tx.student.findFirst({
+        where: { id: studentId, tenantId },
+        include: {
+          enrolments: {
+            where: { status: "ACTIVE" },
+            select: { sectionId: true },
+          },
+        },
+      });
+      if (!student) {
+        throw new NotFoundError("Student not found.");
+      }
+      const isAssigned = student.enrolments.some((e) =>
+        assignedSectionIds.includes(e.sectionId),
+      );
+      if (!isAssigned) {
+        throw new ForbiddenError(
+          "You can only view report cards for students in classes assigned to you.",
+        );
+      }
     }
-  }
 
-  return buildReportCard(tenantId, studentId, term);
+    return buildReportCard(tx, tenantId, studentId, term);
+  });
 }
 
 /**
@@ -319,32 +326,34 @@ export async function getClassReportCards(
 ) {
   if (!term.trim()) throw new BadRequestError("Choose a term.", { term: "Term is required" });
 
-  const section = await prisma.section.findFirst({
-    where: { id: classId, tenantId },
-    select: { id: true },
-  });
-
-  let sectionIds: string[];
-  if (section) {
-    sectionIds = [section.id];
-  } else {
-    const schoolClass = await prisma.schoolClass.findFirst({
+  return withTenant(tenantId, async (tx) => {
+    const section = await tx.section.findFirst({
       where: { id: classId, tenantId },
-      select: { sections: { select: { id: true } } },
+      select: { id: true },
     });
-    if (!schoolClass) throw new NotFoundError("Class not found.");
-    sectionIds = schoolClass.sections.map((row) => row.id);
-  }
 
-  if (sectionIds.length === 0) return [];
+    let sectionIds: string[];
+    if (section) {
+      sectionIds = [section.id];
+    } else {
+      const schoolClass = await tx.schoolClass.findFirst({
+        where: { id: classId, tenantId },
+        select: { sections: { select: { id: true } } },
+      });
+      if (!schoolClass) throw new NotFoundError("Class not found.");
+      sectionIds = schoolClass.sections.map((row) => row.id);
+    }
 
-  const enrolments = await prisma.enrolment.findMany({
-    where: { tenantId, sectionId: { in: sectionIds }, status: "ACTIVE" },
-    select: { studentId: true },
-    orderBy: { student: { admissionNo: "asc" } },
+    if (sectionIds.length === 0) return [];
+
+    const enrolments = await tx.enrolment.findMany({
+      where: { tenantId, sectionId: { in: sectionIds }, status: "ACTIVE" },
+      select: { studentId: true },
+      orderBy: { student: { admissionNo: "asc" } },
+    });
+
+    return Promise.all(
+      enrolments.map((row) => buildReportCard(tx, tenantId, row.studentId, term)),
+    );
   });
-
-  return Promise.all(
-    enrolments.map((row) => buildReportCard(tenantId, row.studentId, term)),
-  );
 }

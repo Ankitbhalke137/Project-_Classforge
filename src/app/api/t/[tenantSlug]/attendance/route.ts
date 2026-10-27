@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { resolveTenantContext } from "@/lib/tenant-context";
-import { handleApiError } from "@/lib/errors";
-import { BadRequestError } from "@/lib/errors";
+import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
+import { handleApiError, BadRequestError, ForbiddenError } from "@/lib/errors";
 
 /** Date-only columns are read and written at UTC midnight so they never shift. */
 function parseDay(value: string): Date {
   return new Date(`${value}T00:00:00.000Z`);
+}
+
+/** Returns the current calendar date in school-local timezone (Asia/Kolkata default). */
+function getSchoolLocalDate(): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+  }
 }
 
 const markSchema = z.object({
@@ -42,18 +55,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
 
     const day = parseDay(raw);
 
-    const records = await prisma.attendanceRecord.findMany({
-      where: { tenantId: tenant.id, attendanceDate: day },
-      include: {
-        section: {
-          select: {
-            id: true,
-            name: true,
-            classId: true,
-            schoolClass: { select: { name: true } },
+    const records = await withTenant(tenant.id, async (tx) => {
+      return tx.attendanceRecord.findMany({
+        where: { tenantId: tenant.id, attendanceDate: day },
+        include: {
+          section: {
+            select: {
+              id: true,
+              name: true,
+              classId: true,
+              schoolClass: { select: { name: true } },
+            },
           },
         },
-      },
+      });
     });
 
     // Group the flat records into one summary per section.
@@ -101,6 +116,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
  * Saves one section's register for one day. A re-save updates the same rows
  * instead of adding duplicates, which is what a teacher correcting a mistake
  * expects.
+ *
+ * Security:
+ *  - Enforces teacher assignment check (Task 4)
+ *  - Enforces same-day editing rule for teachers (Task 5)
+ *  - Operates under withTenant RLS context (Task 3)
  */
 export async function POST(
   request: NextRequest,
@@ -122,79 +142,109 @@ export async function POST(
     const input = parsed.data;
     const day = parseDay(input.date);
 
-    const section = await prisma.section.findFirst({
-      where: { id: input.classId, tenantId: tenant.id },
-      select: { id: true },
-    });
-    if (!section) throw new BadRequestError("That class was not found in this school.");
-
-    const enrolments = await prisma.enrolment.findMany({
-      where: {
-        tenantId: tenant.id,
-        sectionId: input.classId,
-        status: "ACTIVE",
-        studentId: { in: input.records.map((record) => record.studentId) },
-      },
-      select: { studentId: true },
-    });
-
-    const enrolled = new Set(enrolments.map((row) => row.studentId));
-    const stranger = input.records.find((record) => !enrolled.has(record.studentId));
-    if (stranger) {
-      throw new BadRequestError(
-        "One of those students is not enrolled in this class. Refresh and try again.",
-      );
+    // TASK 5: Teachers may only create or edit attendance for current school-local date
+    if (membership.role === "TEACHER") {
+      const todayLocal = getSchoolLocalDate();
+      if (input.date !== todayLocal) {
+        throw new ForbiddenError(
+          `Teachers may only mark or edit attendance for the current calendar date (${todayLocal}). Editing past or future dates is not permitted.`,
+        );
+      }
     }
 
-    await prisma.$transaction(
-      async (tx) => {
-        for (const record of input.records) {
-          await tx.attendanceRecord.upsert({
-            where: {
-              tenantId_sectionId_studentId_attendanceDate: {
-                tenantId: tenant.id,
-                sectionId: input.classId,
-                studentId: record.studentId,
-                attendanceDate: day,
-              },
-            },
-            create: {
+    return await withTenant(tenant.id, async (tx) => {
+      const section = await tx.section.findFirst({
+        where: { id: input.classId, tenantId: tenant.id },
+        select: { id: true },
+      });
+      if (!section) throw new BadRequestError("That class was not found in this school.");
+
+      // TASK 4: Restrict attendance marking to assigned teachers
+      if (membership.role === "TEACHER") {
+        const teacher = await tx.teacher.findFirst({
+          where: { tenantId: tenant.id, userId: membership.userId },
+          select: { id: true },
+        });
+        if (!teacher) {
+          throw new ForbiddenError("No teacher record found linked to your account in this school.");
+        }
+
+        const assignment = await tx.teachingAssignment.findFirst({
+          where: {
+            tenantId: tenant.id,
+            teacherId: teacher.id,
+            sectionId: input.classId,
+          },
+          select: { id: true },
+        });
+        if (!assignment) {
+          throw new ForbiddenError("You are not assigned to mark attendance for this section.");
+        }
+      }
+
+      const enrolments = await tx.enrolment.findMany({
+        where: {
+          tenantId: tenant.id,
+          sectionId: input.classId,
+          status: "ACTIVE",
+          studentId: { in: input.records.map((record) => record.studentId) },
+        },
+        select: { studentId: true },
+      });
+
+      const enrolled = new Set(enrolments.map((row) => row.studentId));
+      const stranger = input.records.find((record) => !enrolled.has(record.studentId));
+      if (stranger) {
+        throw new BadRequestError(
+          "One of those students is not enrolled in this class. Refresh and try again.",
+        );
+      }
+
+      for (const record of input.records) {
+        await tx.attendanceRecord.upsert({
+          where: {
+            tenantId_sectionId_studentId_attendanceDate: {
               tenantId: tenant.id,
               sectionId: input.classId,
               studentId: record.studentId,
               attendanceDate: day,
-              status: record.status,
-              markedBy: membership.userId,
             },
-            update: {
-              status: record.status,
-              markedBy: membership.userId,
-            },
-          });
-        }
-      },
-      { timeout: 20_000 },
-    );
+          },
+          create: {
+            tenantId: tenant.id,
+            sectionId: input.classId,
+            studentId: record.studentId,
+            attendanceDate: day,
+            status: record.status,
+            markedBy: membership.userId,
+          },
+          update: {
+            status: record.status,
+            markedBy: membership.userId,
+          },
+        });
+      }
 
-    const records = await prisma.attendanceRecord.findMany({
-      where: { tenantId: tenant.id, sectionId: input.classId, attendanceDate: day },
-      orderBy: { studentId: "asc" },
+      const records = await tx.attendanceRecord.findMany({
+        where: { tenantId: tenant.id, sectionId: input.classId, attendanceDate: day },
+        orderBy: { studentId: "asc" },
+      });
+
+      return NextResponse.json(
+        {
+          records: records.map((record) => ({
+            id: record.id,
+            date: record.attendanceDate.toISOString().slice(0, 10),
+            classId: input.classId,
+            studentId: record.studentId,
+            status: record.status,
+            markedByTeacherId: record.markedBy,
+            markedAt: record.createdAt.toISOString(),
+          })),
+        },
+        { status: 201 },
+      );
     });
-
-    return NextResponse.json(
-      {
-        records: records.map((record) => ({
-          id: record.id,
-          date: record.attendanceDate.toISOString().slice(0, 10),
-          classId: input.classId,
-          studentId: record.studentId,
-          status: record.status,
-          markedByTeacherId: record.markedBy,
-          markedAt: record.createdAt.toISOString(),
-        })),
-      },
-      { status: 201 },
-    );
   } catch (error) {
     return handleApiError(error);
   }
