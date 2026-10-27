@@ -1,0 +1,9 @@
+ID,Improvement,Why,Effort,Priority
+IMP-001,Move Neon DB to aws-us-east-1 region,"Vercel runs in iad1 (DC); DB is in us-east-2 (Ohio). Cross-region latency adds 30-50ms per API call.",Low,High
+IMP-002,Add React Query / SWR for frontend cache,"Currently every page reload re-fetches all API data. Repeat visits are slow.",Medium,High
+IMP-003,Add loading skeleton during role switch,"User sees old data briefly while new role data fetches",Low,High
+IMP-004,Combine dashboard API calls into single endpoint,"Teacher dashboard makes 7 separate API calls; school overview makes 3. Each is a cross-region round-trip.",Medium,High
+IMP-005,Add Redis/Memory cache for rate limit store,"PostgreSQL rate limit table adds DB write on every login attempt",Low,Medium
+IMP-006,Add API response compression,"Reduces bandwidth for large payloads (roster, timetable)",Low,Medium
+IMP-007,Add E2E test suite (Playwright),"Already have Playwright installed; add critical path tests",Medium,Medium
+IMP-008,Add request timeout handling,"Slow DB queries can hang indefinitely",Low,Medium
