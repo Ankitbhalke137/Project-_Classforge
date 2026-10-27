@@ -366,9 +366,6 @@ export function LoginForm() {
                   </div>
                 ) : null}
                 <div className="space-y-2">
-                  <label htmlFor="forgot-email" className="text-sm font-medium text-ink">
-                    Email address
-                  </label>
                   <Input
                     id="forgot-email"
                     type="email"
