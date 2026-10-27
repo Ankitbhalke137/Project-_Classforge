@@ -29,7 +29,6 @@ export const SCHOOL_AREAS = {
   assignments: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
   exams: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
   announcements: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
-  fees: ["SCHOOL_ADMIN", "PARENT"],
   parents: ["SCHOOL_ADMIN", "PARENT"],
   "report-cards": ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
   schedule: ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"],
@@ -81,10 +80,6 @@ export const ACTIONS = {
   createAssignment: ["SCHOOL_ADMIN", "TEACHER"],
   submitAssignment: ["STUDENT"],
   gradeSubmission: ["SCHOOL_ADMIN", "TEACHER"],
-
-  /* Fees */
-  viewAllFees: ["SCHOOL_ADMIN"],
-  viewChildFees: ["PARENT"],
 
   /* Dashboard roll-ups */
   /** The school-wide numbers. Nobody below the admin gets these. */
@@ -148,6 +143,6 @@ export function dashboardFor(role: Role | null): DashboardVariant | null {
   if (canPerform(role, "viewSchoolDashboard")) return "SCHOOL";
   if (canPerform(role, "markAttendance")) return "TEACHER";
   if (canPerform(role, "submitAssignment")) return "STUDENT";
-  if (canPerform(role, "viewChildFees")) return "PARENT";
+  if (canPerform(role, "viewOwnResults")) return "PARENT";
   return null;
 }

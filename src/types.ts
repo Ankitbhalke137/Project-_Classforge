@@ -492,40 +492,6 @@ export interface Announcement {
   sectionId: string | null;
 }
 
-/* ---------- Fees ---------- */
-
-export const FEE_STATUSES = ["PAID", "PARTIAL", "PENDING", "OVERDUE"] as const;
-export type FeeStatus = (typeof FEE_STATUSES)[number];
-
-export const FEE_TYPES = ["Tuition", "Transport", "Examination", "Lab", "Library"] as const;
-export type FeeType = (typeof FEE_TYPES)[number];
-
-export interface FeeInvoice {
-  id: string;
-  /** Human-readable reference, unique inside one school. */
-  invoiceNo: string;
-  studentId: string;
-  studentName: string;
-  className: string;
-  term: string;
-  feeType: FeeType;
-  amount: number;
-  amountPaid: number;
-  dueDate: string;
-  status: FeeStatus;
-  paidAt: string | null;
-}
-
-export interface FeeSummary {
-  totalBilled: number;
-  totalCollected: number;
-  outstanding: number;
-  overdueAmount: number;
-  overdueCount: number;
-  /** Collected / billed, 0-100. */
-  collectionRate: number;
-}
-
 /* ---------- Who am I inside this school ---------- */
 
 /**
@@ -551,7 +517,6 @@ export interface SchoolDashboard {
   classCount: number;
   parentCount: number;
   attendanceToday: { date: string; percentage: number; marked: number; total: number };
-  fees: FeeSummary;
   upcomingExams: Exam[];
   latestAnnouncements: Announcement[];
   recentExams: Exam[];

@@ -8,7 +8,6 @@ import {
   AssignmentsIcon,
   AttendanceIcon,
   ExamsIcon,
-  FeesIcon,
   ReportsIcon,
   ScheduleIcon,
 } from "@/components/ui/icons";
@@ -28,16 +27,11 @@ export default function ParentPortalPage() {
     [schoolSlug, primaryChild?.id],
   );
 
-  const feeSummary = useApi(
-    () => schoolApi.getFeeSummary(schoolSlug),
-    [schoolSlug],
-  );
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Parent Portal"
-        description="Monitor your child's academic progress, attendance records, school fees, and upcoming schedules."
+        description="Monitor your child's academic progress, attendance records, and upcoming schedules."
       />
 
       {loading ? (
@@ -102,24 +96,6 @@ export default function ParentPortalPage() {
                   <div>
                     <h3 className="font-semibold text-ink">Grades &amp; Results</h3>
                     <p className="text-xs text-body">View exam marks &amp; performance</p>
-                  </div>
-                </div>
-              </Card>
-            </Link>
-
-            <Link href={`/${schoolSlug}/fees`}>
-              <Card className="p-5 transition hover:shadow-md">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-warn-50 text-warn-600">
-                    <FeesIcon width={22} height={22} />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-ink">School Fees</h3>
-                    <p className="text-xs text-body">
-                      {feeSummary.data && feeSummary.data.outstanding > 0
-                        ? `₹${feeSummary.data.outstanding.toLocaleString("en-IN")} dues pending`
-                        : "Invoices & payment records"}
-                    </p>
                   </div>
                 </div>
               </Card>

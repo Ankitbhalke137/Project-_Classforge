@@ -23,8 +23,7 @@
     "test:p1": "tsx scripts/test-p1-implementation.ts",
     "db:assign-teachers": "tsx scripts/assign-students-to-teachers.ts",
     "db:seed-demo": "tsx scripts/seed-demo-students.ts",
-    "db:assign-noida": "tsx scripts/assign-noida-teacher.ts",
-    "test:fees": "tsx scripts/test-fees-and-password.ts"
+    "db:assign-noida": "tsx scripts/assign-noida-teacher.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

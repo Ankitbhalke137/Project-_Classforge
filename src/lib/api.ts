@@ -13,8 +13,6 @@ import type {
   Exam,
   ExamResult,
   ExamStatus,
-  FeeInvoice,
-  FeeSummary,
   MyResults,
   Paginated,
   Parent,
@@ -683,41 +681,6 @@ export const schoolApi = {
     api<NotificationPreferences>(`/api/t/${schoolSlug}/notification-preferences`, {
       method: "PUT",
       body,
-    }),
-
-  /* --- Fees --- */
-  /**
-   * The ledger is scoped by the session on the server: a School Admin sees the
-   * whole school, a parent only their own children. The client must never send
-   * an email to name the viewer.
-   */
-  listFees: (
-    schoolSlug: string,
-    params: {
-      page?: number;
-      search?: string;
-      status?: string;
-      classId?: string;
-      term?: string;
-    } = {},
-  ) => api<Paginated<FeeInvoice>>(withQuery(`/api/t/${schoolSlug}/fees`, params)),
-  getFeeSummary: (schoolSlug: string) =>
-    api<FeeSummary>(`/api/t/${schoolSlug}/fees/summary`),
-  createFeeInvoice: (
-    schoolSlug: string,
-    body: {
-      studentId: string;
-      feeType: FeeInvoice["feeType"];
-      term: string;
-      amount: number;
-      dueDate: string;
-      invoiceNo?: string;
-    },
-  ) => api<FeeInvoice>(`/api/t/${schoolSlug}/fees`, { method: "POST", body }),
-  recordFeePayment: (schoolSlug: string, invoiceId: string, amount: number) =>
-    api<FeeInvoice>(`/api/t/${schoolSlug}/fees/${invoiceId}`, {
-      method: "PATCH",
-      body: { amount },
     }),
 
   /* --- Roll-up for the dashboard --- */

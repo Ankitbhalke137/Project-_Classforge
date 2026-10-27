@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveTenantContext } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
-import { getFeeSummary } from "@/lib/services/fee-service";
 
 /**
  * GET /api/t/:tenantSlug/dashboard
@@ -17,7 +16,7 @@ import { getFeeSummary } from "@/lib/services/fee-service";
 export async function GET(request: NextRequest, context: { params: Promise<{ tenantSlug: string }> }) {
   try {
     const { tenantSlug } = await context.params;
-    const { tenant, membership } = await resolveTenantContext(request, tenantSlug, [
+    const { tenant } = await resolveTenantContext(request, tenantSlug, [
       "SCHOOL_ADMIN",
     ]);
 
@@ -68,10 +67,6 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
       publishedAt: exam.createdAt.toISOString(),
     });
 
-    const feeMetrics = await getFeeSummary(tenant.id, {
-      role: membership.role,
-      userId: membership.userId,
-    });
     const guardians = await prisma.student.findMany({
       where: { tenantId: tenant.id, guardianName: { not: null } },
       select: { guardianName: true },
@@ -91,7 +86,6 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ten
         marked: todaysRecords.length,
         total: studentCount,
       },
-      fees: feeMetrics,
       upcomingExams: exams.filter((exam) => exam.status === "SCHEDULED").map(toExam),
       // The schema's ExamStatus has no PUBLISHED state; COMPLETED is the
       // closest equivalent to "results are out".

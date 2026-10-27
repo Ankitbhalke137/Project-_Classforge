@@ -75,7 +75,6 @@ of real users can be set up through the console.
 | `npm run smtp:test <email>` | check the SMTP connection and send a test email |
 | `npm run test:platform` | end-to-end check of every Super Admin endpoint |
 | `npm run test:p1` | end-to-end check of the P1 authorization and pagination rules |
-| `npm run test:fees` | first-login password flow and the fee ledger, against a running server |
 
 ## Emails
 
@@ -136,14 +135,6 @@ password carries `mustChangePassword: true`. Login returns the flag, the client
 shows a non-dismissible password form, and every school endpoint returns 403
 until `POST /api/auth/change-password` clears it. A password chosen by the owner
 is never flagged.
-
-**Fees.** Fee invoices are real rows in `fee_invoices`, one per student, fee head
-and term. Recording a payment adds to `amount_paid` and recalculates the status
-(`PENDING`, `PARTIAL`, `PAID`, `OVERDUE`); overpaying is rejected. A School Admin
-sees the whole ledger; a parent sees only invoices for students linked to their
-own user account. The server derives that scope from the session rather than a
-client-supplied email. The schema has no guardian ↔ student relation yet, so a
-parent's ledger stays empty until one exists.
 
 **Two authorisation checks.** `requireSuperAdmin` (in `platform-auth.ts`) asks
 whether the caller has the `SUPER_ADMIN` platform role. `resolveTenantContext`
@@ -209,10 +200,6 @@ POST   /api/t/:slug/exams/:id/publish
 GET    /api/t/:slug/report-cards        ?classId term
 GET    /api/t/:slug/announcements       ?page limit search priority audience sectionId
 POST   /api/t/:slug/announcements       (Section-scoped announcements with sectionId)
-GET    /api/t/:slug/fees                ?page search status classId term
-POST   /api/t/:slug/fees                 raise an invoice (School Admin)
-PATCH  /api/t/:slug/fees/:id             record a payment (School Admin)
-GET    /api/t/:slug/fees/summary
 GET    /api/t/:slug/dashboard
 GET    /api/t/:slug/calendar                the academic year, terms and timetable
 GET    /api/t/:slug/notification-preferences
