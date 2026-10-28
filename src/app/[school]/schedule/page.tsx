@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { RequireArea } from "@/components/auth/guards";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { SelectControl } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
@@ -110,20 +111,19 @@ function Schedule() {
             <Card className="p-4">
               <label className="block max-w-sm">
                 <span className="mb-1.5 block text-sm font-medium text-ink">Class</span>
-                <select
+                <SelectControl
                   value={currentId}
                   onChange={(event) => {
                     setSectionId(event.target.value);
                     setNotice(null);
                   }}
-                  className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft"
                 >
                   {sectionRows.map((row) => (
                     <option key={row.id} value={row.id}>
                       {row.name}
                     </option>
                   ))}
-                </select>
+                </SelectControl>
               </label>
             </Card>
 
@@ -395,12 +395,12 @@ function TimetableEditor({
                     const key = `${day}:${period.period}`;
                     return (
                       <td key={day} className="border border-line p-1">
-                        <select
+                        <SelectControl
+                          variant="cell"
                           value={grid[key] ?? ""}
                           onChange={(event) =>
                             setGrid((current) => ({ ...current, [key]: event.target.value }))
                           }
-                          className="w-full rounded-md border border-line bg-white px-1.5 py-1.5 text-xs text-ink focus:border-secondary focus:outline-none"
                         >
                           <option value="">—</option>
                           {subjects.map((subject) => (
@@ -408,7 +408,7 @@ function TimetableEditor({
                               {subject.code || subject.name}
                             </option>
                           ))}
-                        </select>
+                        </SelectControl>
                       </td>
                     );
                   })}

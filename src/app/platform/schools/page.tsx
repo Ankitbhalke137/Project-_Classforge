@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Avatar, Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Input, SelectControl } from "@/components/ui/input";
 import { ConfirmModal, Modal } from "@/components/ui/modal";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { Table, TBody, TD, TH, THead, TR, TableSkeleton } from "@/components/ui/table";
@@ -147,16 +147,15 @@ export default function SchoolsPage() {
           <label className="sr-only" htmlFor="status-filter">
             Filter by status
           </label>
-          <select
+          <SelectControl
             id="status-filter"
             value={status}
             onChange={(event) => setStatus(event.target.value as StatusFilter)}
-            className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft"
           >
             <option value="ALL">All statuses</option>
             <option value="ACTIVE">Active</option>
             <option value="SUSPENDED">Suspended</option>
-          </select>
+          </SelectControl>
 
           <Button variant="secondary" onClick={schools.reload} isLoading={schools.loading}>
             Refresh

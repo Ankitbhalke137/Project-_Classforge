@@ -6,6 +6,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Table, TBody, TD, TH, THead, TR, TableSkeleton } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/states";
 import { Badge } from "@/components/ui/badge";
+import { SelectControl } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/badge";
 import { useApi } from "@/lib/hooks";
 import { ApiError, schoolApi } from "@/lib/api";
@@ -327,16 +328,15 @@ function InviteUserModal({
                 <label htmlFor="invite-role" className="text-sm font-medium text-primary block mb-1">
                   Role <span className="ml-0.5 text-danger-600">*</span>
                 </label>
-                <select
+                <SelectControl
                   id="invite-role"
                   value={inviteRole}
                   onChange={(event) => setInviteRole(event.target.value as "TEACHER" | "STUDENT")}
                   disabled={inviting}
-                  className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft disabled:bg-page"
                 >
                   <option value="TEACHER">Teacher</option>
                   <option value="STUDENT">Student</option>
-                </select>
+                </SelectControl>
               </div>
             </div>
             <p className="text-[12px] text-muted">

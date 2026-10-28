@@ -97,7 +97,7 @@ export function Dropdown({
           role="menu"
           aria-label={label}
           className={cn(
-            "absolute z-40 mt-2 min-w-56 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-float",
+            "absolute z-40 mt-2 min-w-56 overflow-hidden rounded-xl border border-line bg-white py-2 shadow-float",
             align === "right" ? "right-0" : "left-0",
             panelClassName,
           )}
@@ -111,10 +111,10 @@ export function Dropdown({
                 setOpen(false);
                 item.onSelect();
               }}
-              className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-ink hover:bg-page"
+              className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm text-ink hover:bg-page"
             >
               {item.icon ? (
-                <span className="flex size-7 shrink-0 items-center justify-center text-body">
+                <span className="flex size-9 shrink-0 items-center justify-center text-body p-1">
                   {item.icon}
                 </span>
               ) : null}

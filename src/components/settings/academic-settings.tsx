@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Input, SelectControl } from "@/components/ui/input";
 import { ConfirmModal, Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/states";
 import { Table, TBody, TD, TH, THead, TR, TableSkeleton } from "@/components/ui/table";
@@ -488,15 +488,14 @@ function YearModal({
         </div>
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-ink">Status</span>
-          <select
+          <SelectControl
             value={status}
             onChange={(event) => setStatus(event.target.value as AcademicYear["status"])}
-            className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft"
           >
             <option value="UPCOMING">Upcoming</option>
             <option value="ACTIVE">Active</option>
             <option value="COMPLETED">Completed</option>
-          </select>
+          </SelectControl>
         </label>
       </form>
     </Modal>

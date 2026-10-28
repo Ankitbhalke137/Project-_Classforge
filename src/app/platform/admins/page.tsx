@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Avatar, Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input, Select } from "@/components/ui/input";
+import { Input, Select, SelectControl } from "@/components/ui/input";
 import { ConfirmModal, Modal } from "@/components/ui/modal";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { Table, TBody, TD, TH, THead, TR, TableSkeleton } from "@/components/ui/table";
@@ -224,27 +224,25 @@ function PlatformAdminsContent() {
             />
           </div>
 
-          <select
+          <SelectControl
             aria-label="Filter by role"
             value={roleFilter}
             onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
-            className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft"
           >
             <option value="ALL">All roles</option>
             <option value="SCHOOL_ADMIN">School Admin</option>
             <option value="TEACHER">Teacher</option>
-          </select>
+          </SelectControl>
 
-          <select
+          <SelectControl
             aria-label="Filter by status"
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-            className="rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft"
           >
             <option value="ALL">All statuses</option>
             <option value="ACTIVE">Active</option>
             <option value="INACTIVE">Inactive</option>
-          </select>
+          </SelectControl>
 
           <Button variant="secondary" onClick={admins.reload} isLoading={admins.loading}>
             Refresh
@@ -316,19 +314,19 @@ function PlatformAdminsContent() {
                       <p className="text-xs text-muted">/{row.schoolSlug}</p>
                     </TD>
                     <TD>
-                      <select
+                      <SelectControl
+                        variant="compact"
                         aria-label={`Role for ${row.name}`}
                         value={row.role}
                         disabled={busy}
                         onChange={(event) => changeRole(row, event.target.value as StaffRole)}
-                        className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft disabled:opacity-60"
                       >
                         {ROLE_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
                         ))}
-                      </select>
+                      </SelectControl>
                     </TD>
                     <TD>
                       <Badge tone={row.status === "ACTIVE" ? "green" : "amber"}>
