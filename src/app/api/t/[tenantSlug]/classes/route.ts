@@ -8,7 +8,7 @@ interface RouteContext {
   params: Promise<{ tenantSlug: string }>;
 }
 
-const READ_ROLES = ["SCHOOL_ADMIN", "TEACHER", "STUDENT"] as const;
+const READ_ROLES = ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"] as const;
 
 /**
  * GET /api/t/:tenantSlug/classes

@@ -22,6 +22,10 @@ export interface User {
   email: string;
   /** True for the platform admin, who sits outside every school. */
   isSuperAdmin: boolean;
+  /** Every role this account holds across all schools, derived from memberships. */
+  roles: Role[];
+  /** True when the account was issued a temporary password and must set a new one before using the app. */
+  mustChangePassword: boolean;
 }
 
 /** The role one account holds inside one school. */
@@ -119,6 +123,8 @@ export interface CreatedPlatformAdmin extends PlatformAdmin {
   temporaryPassword: string | null;
   /** True when the invite email with the temporary password went out. */
   emailSent: boolean;
+  /** Why the email did not go out. Null when it did, or when there was none to send. */
+  emailError?: string | null;
 }
 
 /* ---------- People inside a school ---------- */
@@ -143,13 +149,15 @@ export interface Student {
   dateOfBirth?: string | null;
   createdAt?: string;
   enrolmentStatus?: string | null;
+  guardianName?: string | null;
+  guardianPhone?: string | null;
 
   // Fields the API may not have a column behind yet — they come back empty
   // rather than being invented.
   grade?: string;
   section?: string;
   gender?: Gender;
-  phone?: string;
+  phone?: string | null;
   address?: string;
   bloodGroup?: string;
   parentId?: string | null;
@@ -170,14 +178,24 @@ export interface Teacher {
   subjectIds: string[];
   /** Classes this teacher teaches or is homeroom of. */
   classIds: string[];
+  /** Section + subject pairs this teacher is assigned to. */
+  classAssignments: { sectionId: string; subjectId: string }[];
+  /** Membership state in this school. A deactivated teacher keeps their row. */
+  status: "ACTIVE" | "INACTIVE";
+  userId?: string | null;
 }
 
+/**
+ * A guardian as the roster knows them. The schema stores a guardian's name and
+ * phone on each student, not a separate contact record, so `email` and
+ * `occupation` are genuinely absent rather than invented.
+ */
 export interface Parent {
   id: string;
   name: string;
-  email: string;
-  phone: string;
-  occupation: string;
+  email: string | null;
+  phone: string | null;
+  occupation: string | null;
   /** A parent with two children in the school has two entries here. */
   studentIds: string[];
 }
@@ -189,24 +207,70 @@ export interface Subject {
   name: string;
   /** Short code used in timetables and report cards, e.g. "PHY". */
   code: string;
-  /** Grades this subject is offered in. */
-  grades: string[];
-  /** Out of the full marks for an exam in this subject. */
-  maxMarks: number;
+  classId: string;
+  className: string;
+  teacherCount: number;
+}
+
+export interface AcademicTerm {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  position: number;
+}
+
+export interface AcademicYear {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: "UPCOMING" | "ACTIVE" | "COMPLETED";
+  classCount: number;
+  studentCount: number;
+  terms: AcademicTerm[];
+}
+
+export interface TimetablePeriod {
+  id: string;
+  period: number;
+  startTime: string;
+  endTime: string;
+  label: string | null;
+}
+
+/** A teacher being responsible for one subject in one section. */
+export interface TeachingAssignment {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  sectionId: string;
+  classId: string;
+  sectionName: string;
+  subjectId: string;
+  subjectName: string;
+  subjectCode: string;
 }
 
 /** A section of a grade — "Grade 10 · A" is one class, not the whole grade. */
 export interface SchoolClass {
+  /** The section id (or the class id when the class has no sections yet). */
   id: string;
+  /** The parent class, for filters that span all of its sections. */
+  classId?: string;
   name: string;
   grade: string;
   section: string;
   room: string;
   /** The teacher responsible for this class. Null while the post is vacant. */
   homeroomTeacherId: string | null;
+  homeroomTeacherName?: string | null;
   subjectIds: string[];
   studentCount: number;
   capacity: number;
+  academicYearId?: string;
+  academicYear?: { id: string; name: string; status: string };
+  sectionCount?: number;
 }
 
 export const WEEKDAYS = [
@@ -290,7 +354,7 @@ export interface AttendanceTrendPoint {
 
 /* ---------- Exams & grades ---------- */
 
-export const EXAM_STATUSES = ["SCHEDULED", "IN_PROGRESS", "PUBLISHED"] as const;
+export const EXAM_STATUSES = ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
 export type ExamStatus = (typeof EXAM_STATUSES)[number];
 
 export interface Exam {
@@ -306,6 +370,13 @@ export interface Exam {
   status: ExamStatus;
   /** Set once results are released. */
   publishedAt: string | null;
+  subjectName?: string;
+  sectionId?: string;
+  sectionName?: string;
+  className?: string;
+  /** How many students already have a mark. */
+  markedCount?: number;
+  studentCount?: number;
 }
 
 /** Percentage at or above which a grade is awarded. Ordered high to low. */
@@ -421,38 +492,8 @@ export interface Announcement {
   eventDate: string | null;
   attachments: AnnouncementAttachment[];
   readCount: number;
-}
-
-/* ---------- Fees ---------- */
-
-export const FEE_STATUSES = ["PAID", "PARTIAL", "PENDING", "OVERDUE"] as const;
-export type FeeStatus = (typeof FEE_STATUSES)[number];
-
-export const FEE_TYPES = ["Tuition", "Transport", "Examination", "Lab", "Library"] as const;
-export type FeeType = (typeof FEE_TYPES)[number];
-
-export interface FeeInvoice {
-  id: string;
-  studentId: string;
-  studentName: string;
-  className: string;
-  term: string;
-  feeType: FeeType;
-  amount: number;
-  amountPaid: number;
-  dueDate: string;
-  status: FeeStatus;
-  paidAt: string | null;
-}
-
-export interface FeeSummary {
-  totalBilled: number;
-  totalCollected: number;
-  outstanding: number;
-  overdueAmount: number;
-  overdueCount: number;
-  /** Collected / billed, 0-100. */
-  collectionRate: number;
+  /** Set when the notice is addressed to one section; null for school-wide. */
+  sectionId: string | null;
 }
 
 /* ---------- Who am I inside this school ---------- */
@@ -480,7 +521,6 @@ export interface SchoolDashboard {
   classCount: number;
   parentCount: number;
   attendanceToday: { date: string; percentage: number; marked: number; total: number };
-  fees: FeeSummary;
   upcomingExams: Exam[];
   latestAnnouncements: Announcement[];
   recentExams: Exam[];

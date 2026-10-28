@@ -20,6 +20,8 @@ export function Dropdown({
   align = "right",
   className,
   block = false,
+  panelClassName,
+  onOpenChange,
 }: {
   trigger: ReactNode;
   items: DropdownItem[];
@@ -28,10 +30,31 @@ export function Dropdown({
   className?: string;
   /** Stretch to the container's width — used by the sidebar's school switcher. */
   block?: boolean;
+  /** Extra classes for the panel itself, e.g. a wider notifications card. */
+  panelClassName?: string;
+  /**
+   * Told every time the menu opens or closes, however it got there — the
+   * trigger, a click outside, or Escape. A ref holds the callback so a caller
+   * passing an inline arrow is not called again on every re-render.
+   */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
+
+  const notify = useRef(onOpenChange);
+
+  // Written from an effect, never during render: React rules require the ref
+  // to be updated outside render, and effects are that outside.
+  useEffect(() => {
+    notify.current = onOpenChange;
+  }, [onOpenChange]);
+
+  useEffect(() => {
+    notify.current?.(open);
+    // Only a change in `open` may report: opening, closing, nothing else.
+  }, [open]);
 
   // Clicking anywhere else, or pressing Escape, closes the menu.
   useEffect(() => {
@@ -76,6 +99,7 @@ export function Dropdown({
           className={cn(
             "absolute z-40 mt-2 min-w-56 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-float",
             align === "right" ? "right-0" : "left-0",
+            panelClassName,
           )}
         >
           {items.map((item) => (

@@ -7,15 +7,13 @@ import { Logo } from "@/components/brand/logo";
 import { SchoolIllustration } from "@/components/brand/school-illustration";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  AlertIcon,
-  EyeIcon,
-  EyeOffIcon,
-  ShieldCheckIcon,
-} from "@/components/ui/icons";
-import { ApiError } from "@/lib/api";
-import { landingPath } from "@/lib/nav";
+import { Modal } from "@/components/ui/modal";
+import { AlertIcon, EyeIcon, EyeOffIcon, ShieldCheckIcon } from "@/components/ui/icons";
+import { ApiError, api } from "@/lib/api";
+import { landingPath, loginContexts } from "@/lib/nav";
 import { useAuth } from "@/store/auth";
+import { ChangePasswordForm } from "@/components/settings/change-password-form";
+import type { Role } from "@/types";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -27,6 +25,7 @@ type FieldErrors = {
 export function LoginForm() {
   const router = useRouter();
   const login = useAuth((state) => state.login);
+  const setActiveContext = useAuth((state) => state.setActiveContext);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +34,13 @@ export function LoginForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formHint, setFormHint] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
+  /** The same checks the server makes, run early so the fields can speak first. */
   function validate(): FieldErrors {
     const next: FieldErrors = {};
 
@@ -68,6 +73,34 @@ export function LoginForm() {
       await login(email.trim(), password);
 
       const { user, schools } = useAuth.getState();
+      if (!user) return;
+
+      // First-time login: force a password change before reaching any screen.
+      if (user.mustChangePassword) {
+        setShowChangePasswordModal(true);
+        return;
+      }
+
+      // Build the list of (school, role) combinations the user can sign in as.
+      const options = loginContexts(schools);
+
+      // Super Admin sits outside every school — send straight to /platform
+      // even if they have no school memberships.
+      if (user.isSuperAdmin) {
+        setActiveContext(null, null);
+        router.replace("/platform");
+        return;
+      }
+
+      if (options.length === 0) {
+        router.replace("/no-access");
+        return;
+      }
+
+      // Sign straight in with the first available (school, role) context.
+      // The user can switch school/role later from the top-left switcher.
+      const only = options[0];
+      setActiveContext(only.schoolSlug, only.role);
       router.replace(landingPath(user, schools));
     } catch (err) {
       const rejected = err instanceof ApiError && err.status === 401;
@@ -83,6 +116,57 @@ export function LoginForm() {
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handlePasswordChanged() {
+    setShowChangePasswordModal(false);
+    const { user, schools } = useAuth.getState();
+    const options = loginContexts(schools);
+    if (!user) return;
+
+    // Super Admin sits outside every school — send straight to /platform.
+    if (user.isSuperAdmin) {
+      setActiveContext(null, null);
+      router.replace("/platform");
+      return;
+    }
+
+    if (options.length === 0) {
+      router.replace("/no-access");
+      return;
+    }
+
+    const only = options[0];
+    setActiveContext(only.schoolSlug, only.role);
+    router.replace(landingPath(user, schools));
+  }
+
+  async function handleForgotPassword(event: React.FormEvent) {
+    event.preventDefault();
+    setForgotMessage(null);
+    setForgotSubmitting(true);
+
+    try {
+      await api("/api/auth/forgot-password", {
+        method: "POST",
+        body: { email: forgotEmail.trim() },
+      });
+      setForgotMessage({
+        type: "success",
+        text: "If an account exists for this email, a password reset link has been sent.",
+      });
+      setForgotEmail("");
+    } catch (err) {
+      setForgotMessage({
+        type: "error",
+        text:
+          err instanceof ApiError
+            ? err.message
+            : "Could not send the reset link. Try again.",
+      });
+    } finally {
+      setForgotSubmitting(false);
     }
   }
 
@@ -234,6 +318,7 @@ export function LoginForm() {
                 <div className="-mt-2 flex justify-end">
                   <button
                     type="button"
+                    onClick={() => setShowForgotPasswordModal(true)}
                     className="rounded text-sm font-medium text-brand-600 hover:text-brand-700"
                   >
                     Forgot password?
@@ -251,6 +336,73 @@ export function LoginForm() {
                 </Button>
               </form>
             </div>
+
+            <Modal
+              open={showForgotPasswordModal}
+              onClose={() => setShowForgotPasswordModal(false)}
+              title="Forgot your password?"
+              description="Account recovery and password reset information"
+              footer={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setShowForgotPasswordModal(false)}
+                >
+                  Cancel
+                </Button>
+              }
+            >
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                {forgotMessage ? (
+                  <div
+                    role="alert"
+                    className={`rounded-lg border p-3 text-sm ${
+                      forgotMessage.type === "success"
+                        ? "border-success-200 bg-success-50 text-success-600"
+                        : "border-danger-200 bg-danger-50 text-danger-600"
+                    }`}
+                  >
+                    {forgotMessage.text}
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(event) => setForgotEmail(event.target.value)}
+                    placeholder="you@school.edu"
+                    disabled={forgotSubmitting}
+                    label="Email address"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  isLoading={forgotSubmitting}
+                  disabled={forgotSubmitting}
+                  className="w-full"
+                >
+                  Send reset link
+                </Button>
+                {forgotMessage && forgotMessage.type === "success" && (
+                  <p className="text-xs text-muted text-center">
+                    Check your inbox. The link expires in 1 hour.
+                  </p>
+                )}
+              </form>
+            </Modal>
+
+            {showChangePasswordModal && (
+              <Modal
+                open
+                onClose={() => {}}
+                title="Change your password"
+                description="This is your first sign in. Set a new password before you can use ClassForge."
+              >
+                <ChangePasswordForm onSuccess={handlePasswordChanged} />
+              </Modal>
+            )}
 
             <p className="mt-8 text-center text-xs text-body">
               © {new Date().getFullYear()} ClassForge. All rights reserved.

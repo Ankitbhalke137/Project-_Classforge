@@ -1,0 +1,246 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { schoolApi } from "@/lib/api";
+import { useIsReadOnly, useSchoolSlug } from "@/lib/hooks";
+import { ATTENDANCE_STATUSES } from "@/types";
+import { integerError } from "@/lib/validation";
+
+const STATUS_INFO: {
+  key: (typeof ATTENDANCE_STATUSES)[number];
+  label: string;
+  description: string;
+  tone: "neutral" | "brand" | "amber" | "red";
+}[] = [
+  {
+    key: "PRESENT",
+    label: "Present",
+    description: "Student attended the full school day.",
+    tone: "brand",
+  },
+  {
+    key: "ABSENT",
+    label: "Absent",
+    description: "Student was not present without an approved reason.",
+    tone: "red",
+  },
+  {
+    key: "LATE",
+    label: "Late",
+    description: "Student arrived after the start of the school day.",
+    tone: "amber",
+  },
+  {
+    key: "EXCUSED",
+    label: "Excused",
+    description: "Student was absent with an approved reason.",
+    tone: "neutral",
+  },
+];
+
+interface AttendancePolicy {
+  allowTeacherEdit: boolean;
+  requireParentNoteForExcused: boolean;
+  lateThresholdMinutes: number;
+}
+
+const DEFAULT_POLICY: AttendancePolicy = {
+  allowTeacherEdit: true,
+  requireParentNoteForExcused: false,
+  lateThresholdMinutes: 15,
+};
+
+export function AttendanceSettingsSection() {
+  const schoolSlug = useSchoolSlug() ?? "";
+  const readOnly = useIsReadOnly();
+
+  const [policy, setPolicy] = useState<AttendancePolicy>(DEFAULT_POLICY);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSettings() {
+      try {
+        const settings = await schoolApi.getAttendanceSettings(schoolSlug);
+        if (!cancelled) {
+          setPolicy({
+            allowTeacherEdit: settings.allowTeacherEdit,
+            requireParentNoteForExcused: settings.requireParentNoteForExcused,
+            lateThresholdMinutes: settings.lateThresholdMinutes,
+          });
+        }
+      } catch {
+        // Keep defaults if the API call fails.
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [schoolSlug]);
+
+  function validate(): boolean {
+    const lateError = integerError(policy.lateThresholdMinutes, {
+      label: "Late arrival threshold",
+      min: 0,
+      max: 120,
+      required: true,
+    });
+    setError(lateError ?? null);
+    return !lateError;
+  }
+
+  async function handleSave(event: React.FormEvent) {
+    event.preventDefault();
+    if (readOnly || !validate()) return;
+    setSaving(true);
+    setSaved(false);
+
+    try {
+      await schoolApi.saveAttendanceSettings(schoolSlug, {
+        allowTeacherEdit: policy.allowTeacherEdit,
+        requireParentNoteForExcused: policy.requireParentNoteForExcused,
+        lateThresholdMinutes: policy.lateThresholdMinutes,
+      });
+      setSaved(true);
+    } catch {
+      setError("Could not save attendance settings. Try again.");
+    } finally {
+      setSaving(false);
+    }
+
+    setTimeout(() => setSaved(false), 3000);
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader
+          title="Attendance Statuses"
+          description="The four attendance statuses used across the school. These are fixed and cannot be changed."
+        />
+        <CardBody className="divide-y divide-line">
+          {STATUS_INFO.map((status) => (
+            <div key={status.key} className="px-5 py-4 flex items-center gap-4">
+              <Badge tone={status.tone} className="shrink-0 text-[11px]">
+                {status.label}
+              </Badge>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-ink">{status.label}</p>
+                <p className="mt-0.5 text-[13px] text-body">{status.description}</p>
+              </div>
+            </div>
+          ))}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Attendance Policy Preferences"
+          description="Optional preferences for how attendance is recorded and managed."
+        />
+        <CardBody className="space-y-5">
+          <form onSubmit={handleSave} className="space-y-5">
+            <div className="flex items-center justify-between p-4 rounded-xl border border-line bg-white">
+              <div>
+                <h3 className="text-sm font-medium text-ink">Allow teachers to edit attendance</h3>
+                <p className="mt-0.5 text-xs text-body">
+                  Teachers can mark and correct attendance for their classes.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={policy.allowTeacherEdit}
+                  disabled={readOnly}
+                  onChange={(event) =>
+                    setPolicy((p) => ({ ...p, allowTeacherEdit: event.target.checked }))
+                  }
+                  className="rounded border-line bg-white text-secondary focus:border-secondary focus:ring-2 focus:ring-secondary-soft"
+                />
+                <span className="block h-5 w-9 rounded-full border border-line bg-white transition-colors peer-checked:bg-secondary peer-checked:after:translate-x-full peer-checked:after:border-white">
+                  <span className="peer-checked:after:translate-x-full peer-checked:after:border-white after:block after:w-3 after:h-3 after:bg-current after:rounded-full after:border border-line after:bg-white after:top-1 after:left-1 after:transition-all" />
+                </span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between p-4 rounded-xl border border-line bg-white">
+              <div>
+                <h3 className="text-sm font-medium text-ink">Require parent note for excused absences</h3>
+                <p className="mt-0.5 text-xs text-body">
+                  A written note from a parent or guardian is required to mark a student as excused.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={policy.requireParentNoteForExcused}
+                  disabled={readOnly}
+                  onChange={(event) =>
+                    setPolicy((p) => ({ ...p, requireParentNoteForExcused: event.target.checked }))
+                  }
+                  className="rounded border-line bg-white text-secondary focus:border-secondary focus:ring-2 focus:ring-secondary-soft"
+                />
+                <span className="block h-5 w-9 rounded-full border border-line bg-white transition-colors peer-checked:bg-secondary peer-checked:after:translate-x-full peer-checked:after:border-white">
+                  <span className="peer-checked:after:translate-x-full peer-checked:after:border-white after:block after:w-3 after:h-3 after:bg-current after:rounded-full after:border border-line after:bg-white after:top-1 after:left-1 after:transition-all" />
+                </span>
+              </label>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="late-threshold" className="text-sm font-medium text-primary">
+                Late arrival threshold (minutes)
+              </label>
+              <input
+                id="late-threshold"
+                type="number"
+                min="0"
+                max="120"
+                disabled={readOnly}
+                value={policy.lateThresholdMinutes}
+                onChange={(event) =>
+                  setPolicy((p) => ({ ...p, lateThresholdMinutes: Number(event.target.value) || 0 }))
+                }
+                className={cn(
+                  "w-full rounded-xl border px-3 py-2.5 text-sm text-ink focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary-soft",
+                  error ? "border-danger-600 ring-1 ring-danger-600" : "border-line",
+                )}
+              />
+              {error ? (
+                <p role="alert" className="mt-1 text-xs text-danger-600">{error}</p>
+              ) : null}
+            </div>
+
+            <div className="pt-4 flex items-center gap-3 justify-between">
+              {saved ? (
+                <div className="flex items-center gap-2 text-sm text-secondary-strong">
+                  <span className="size-4 shrink-0 flex items-center justify-center rounded-full bg-secondary-soft text-secondary-strong">
+                    ✓
+                  </span>
+                  <span>Attendance settings saved</span>
+                </div>
+              ) : null}
+              <p className="text-xs text-body">
+                Policy preferences apply to attendance marking and reviews for this school.
+              </p>
+              <Button type="submit" variant="primary" isLoading={saving} disabled={saving || readOnly}>
+                Save Changes
+              </Button>
+            </div>
+          </form>
+        </CardBody>
+      </Card>
+    </div>
+  );
+}

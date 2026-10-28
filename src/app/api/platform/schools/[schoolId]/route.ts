@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import {
-  ConflictError,
-  NotFoundError,
-  handleApiError,
-} from "@/lib/errors";
+import { ConflictError, NotFoundError, handleApiError } from "@/lib/errors";
 import { requireSuperAdmin } from "@/lib/platform-auth";
 
 const updateSchoolSchema = z
@@ -21,9 +17,10 @@ const updateSchoolSchema = z
       .optional(),
     status: z.enum(["ACTIVE", "SUSPENDED"]).optional(),
   })
-  .refine((value) => value.name !== undefined || value.slug !== undefined || value.status !== undefined, {
-    message: "Nothing to change.",
-  });
+  .refine(
+    (value) => value.name !== undefined || value.slug !== undefined || value.status !== undefined,
+    { message: "Choose a name, URL slug or status to change." },
+  );
 
 /**
  * GET /api/platform/schools/:schoolId

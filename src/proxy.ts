@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/no-access"];
+const PUBLIC_PATHS = ["/login", "/no-access", "/reset-password"];
 
 /**
  * Server-side redirect for signed-out users, checked before any page renders.

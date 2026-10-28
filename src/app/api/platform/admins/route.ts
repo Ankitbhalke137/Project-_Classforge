@@ -102,12 +102,12 @@ export async function POST(request: NextRequest) {
     let temporaryPassword: string | null = null;
 
     if (user) {
-      const existing = await prisma.membership.findUnique({
-        where: { tenantId_userId: { tenantId: school.id, userId: user.id } },
+      const existing = await prisma.membership.findFirst({
+        where: { tenantId: school.id, userId: user.id, role },
       });
       if (existing) {
-        throw new ConflictError("This person already has access to that school.", {
-          email: "Already a member of this school.",
+        throw new ConflictError("This person already has that role in this school.", {
+          email: "Already has this role in this school.",
         });
       }
     }
@@ -119,13 +119,17 @@ export async function POST(request: NextRequest) {
           name,
           email,
           passwordHash: await hash(temporaryPassword, 10),
+          mustChangePassword: true,
         },
       });
     } else if (!user.passwordHash) {
       temporaryPassword = generateTemporaryPassword();
       user = await prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash: await hash(temporaryPassword, 10) },
+        data: {
+          passwordHash: await hash(temporaryPassword, 10),
+          mustChangePassword: true,
+        },
       });
     }
 

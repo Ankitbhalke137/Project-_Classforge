@@ -7,46 +7,78 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MembershipRole {
+  SCHOOL_ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+}
+
 model Tenant {
-  id                      String                   @id @default(uuid()) @db.Uuid
-  name                    String                   @db.VarChar(150)
-  slug                    String                   @unique @db.VarChar(100)
-  status                  TenantStatus             @default(ACTIVE)
-  createdAt               DateTime                 @default(now()) @map("created_at") @db.Timestamp(6)
-  academicTerms           AcademicTerm[]
-  academicYears           AcademicYear[]
-  announcements           Announcement[]
-  attendanceRecords       AttendanceRecord[]
-  classes                 SchoolClass[]
-  enrolments              Enrolment[]
-  exams                   Exam[]
-  marks                   Mark[]
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String       @db.VarChar(150)
+  slug         String       @unique @db.VarChar(100)
+  contactEmail String?      @map("contact_email") @db.VarChar(254)
+  contactPhone String?      @map("contact_phone") @db.VarChar(50)
+  address      String?      @db.VarChar(300)
+  status       TenantStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
+
   memberships             Membership[]
-  notificationPreferences NotificationPreference[]
+  academicYears           AcademicYear[]
+  classes                 SchoolClass[]
   students                Student[]
   teachers                Teacher[]
+  enrolments              Enrolment[]
   teachingAssignments     TeachingAssignment[]
+  attendanceRecords       AttendanceRecord[]
+  exams                   Exam[]
+  marks                   Mark[]
+  announcements           Announcement[]
+  academicTerms           AcademicTerm[]
   timetablePeriods        TimetablePeriod[]
   timetableSlots          TimetableSlot[]
+  notificationPreferences NotificationPreference[]
+  attendanceSettings      AttendanceSettings?
 
   @@map("tenants")
 }
 
 model User {
-  id                      String                   @id @default(uuid()) @db.Uuid
-  name                    String                   @db.VarChar(150)
-  email                   String                   @unique @db.VarChar(255)
-  passwordHash            String                   @map("password_hash") @db.VarChar(255)
-  createdAt               DateTime                 @default(now()) @map("created_at") @db.Timestamp(6)
-  platformRole            PlatformRole?            @map("platform_role")
-  announcements           Announcement[]
-  attendanceMarked        AttendanceRecord[]
-  gradedMarks             Mark[]
+  id                 String         @id @default(uuid()) @db.Uuid
+  name               String         @db.VarChar(150)
+  email              String         @unique @db.VarChar(255)
+  passwordHash       String         @map("password_hash") @db.VarChar(255)
+  /**
+   * True when the password was issued by an administrator (an invite, an admin
+   * reset, or a resent student credential) rather than chosen by the owner.
+   * The client blocks the app until it is cleared by a real password change.
+   */
+  mustChangePassword Boolean        @default(false) @map("must_change_password")
+  passwordResetToken String?        @map("password_reset_token")
+  passwordResetExpires DateTime?    @map("password_reset_expires")
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  refreshTokens      RefreshToken[]
+
+  platformRole PlatformRole? @map("platform_role")
+
   memberships             Membership[]
-  notificationPreferences NotificationPreference[]
-  refreshTokens           RefreshToken[]
   students                Student[]
   teachers                Teacher[]
+  attendanceMarked        AttendanceRecord[]
+  gradedMarks             Mark[]
+  announcements           Announcement[]
+  notificationPreferences NotificationPreference[]
 
   @@map("users")
 }
@@ -56,26 +88,34 @@ model Membership {
   userId   String           @map("user_id") @db.Uuid
   role     MembershipRole
   status   MembershipStatus @default(ACTIVE)
-  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([tenantId, userId])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, userId, role])
   @@index([userId, status])
   @@map("memberships")
 }
 
+enum AcademicYearStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+}
+
 model AcademicYear {
-  id         String             @id @default(uuid()) @db.Uuid
-  tenantId   String             @map("tenant_id") @db.Uuid
-  name       String             @db.VarChar(50)
-  startDate  DateTime           @map("start_date") @db.Date
-  endDate    DateTime           @map("end_date") @db.Date
-  status     AcademicYearStatus @default(UPCOMING)
-  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamp(6)
-  terms      AcademicTerm[]
-  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id        String             @id @default(uuid()) @db.Uuid
+  tenantId  String             @map("tenant_id") @db.Uuid
+  name      String             @db.VarChar(50)
+  startDate DateTime           @map("start_date") @db.Date
+  endDate   DateTime           @map("end_date") @db.Date
+  status    AcademicYearStatus @default(UPCOMING)
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   classes    SchoolClass[]
   enrolments Enrolment[]
+  terms      AcademicTerm[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, name])
@@ -83,22 +123,23 @@ model AcademicYear {
   @@map("academic_years")
 }
 
-/// *
-///  * One term inside an academic year — "Term 1", "Term 2", and so on.
-///  *
-///  * Kept separate from `AcademicYear` so a school can name and date its own
-///  * terms without the code assuming three equal splits.
+/**
+ * One term inside an academic year — "Term 1", "Term 2", and so on.
+ * Kept separate from `AcademicYear` so a school can name and date its own
+ * terms without the code assuming three equal splits.
+ */
 model AcademicTerm {
-  id             String       @id @default(uuid()) @db.Uuid
-  tenantId       String       @map("tenant_id") @db.Uuid
-  academicYearId String       @map("academic_year_id") @db.Uuid
-  label          String       @db.VarChar(50)
-  startDate      DateTime     @map("start_date") @db.Date
-  endDate        DateTime     @map("end_date") @db.Date
-  position       Int          @default(1)
-  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
-  academicYear   AcademicYear @relation(fields: [tenantId, academicYearId], references: [tenantId, id], onDelete: Cascade)
-  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  label          String   @db.VarChar(50)
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  position       Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [tenantId, academicYearId], references: [tenantId, id], onDelete: Cascade)
 
   @@unique([tenantId, id])
   @@unique([tenantId, academicYearId, label])
@@ -106,11 +147,11 @@ model AcademicTerm {
   @@map("academic_terms")
 }
 
-/// *
-///  * One row of a school's daily timetable — period number and its clock times.
-///  *
-///  * `startTime` and `endTime` are stored as "HH:MM" strings rather than times,
-///  * because a period is a wall-clock label a school sets, not an instant.
+/**
+ * One row of a school's daily timetable — period number and its clock times.
+ * `startTime` and `endTime` are stored as "HH:MM" strings rather than times,
+ * because a period is a wall-clock label a school sets, not an instant.
+ */
 model TimetablePeriod {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @map("tenant_id") @db.Uuid
@@ -119,18 +160,19 @@ model TimetablePeriod {
   endTime   String   @map("end_time") @db.VarChar(5)
   label     String?  @db.VarChar(50)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, period])
   @@index([tenantId])
   @@map("timetable_periods")
 }
 
-/// *
-///  * One subject, in one section, in one period of the week.
-///  *
-///  * The period row (`TimetablePeriod`) carries the clock times; this table only
-///  * says what happens in that slot for that class.
+/**
+ * One subject, in one section, in one period of the week.
+ * The period row (`TimetablePeriod`) carries the clock times; this table only
+ * says what happens in that slot for that class.
+ */
 model TimetableSlot {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @map("tenant_id") @db.Uuid
@@ -140,10 +182,11 @@ model TimetableSlot {
   day       String   @db.VarChar(12)
   period    Int
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  section   Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  teacher   Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, sectionId, day, period])
   @@index([tenantId, sectionId])
@@ -151,11 +194,11 @@ model TimetableSlot {
   @@map("timetable_slots")
 }
 
-/// *
-///  * One person's notification choices inside one school.
-///  *
-///  * Per school, not per account: the same person can be a teacher in one school
-///  * and a parent in another, and each reaches them its own way.
+/**
+ * One person's notification choices inside one school.
+ * Per school, not per account: the same person can be a teacher in one school
+ * and a parent in another, and each reaches them its own way.
+ */
 model NotificationPreference {
   id                 String   @id @default(uuid()) @db.Uuid
   tenantId           String   @map("tenant_id") @db.Uuid
@@ -164,8 +207,9 @@ model NotificationPreference {
   emailNotifications Boolean  @default(false) @map("email_notifications")
   classAnnouncements Boolean  @default(true) @map("class_announcements")
   updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
-  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, userId])
   @@index([userId])
@@ -173,19 +217,22 @@ model NotificationPreference {
 }
 
 model SchoolClass {
-  id                String       @id @default(uuid()) @db.Uuid
-  tenantId          String       @map("tenant_id") @db.Uuid
-  academicYearId    String       @map("academic_year_id") @db.Uuid
-  name              String       @db.VarChar(50)
-  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
-  room              String?      @db.VarChar(50)
-  capacity          Int          @default(0)
-  /// * Plain uuid rather than a relation: a teacher leaving must not delete the class.
-  homeroomTeacherId String?      @map("homeroom_teacher_id") @db.Uuid
-  academicYear      AcademicYear @relation(fields: [tenantId, academicYearId], references: [tenantId, id], onDelete: Cascade)
-  tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sections          Section[]
-  subjects          Subject[]
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  academicYearId    String   @map("academic_year_id") @db.Uuid
+  name              String   @db.VarChar(50)
+  room              String?  @db.VarChar(50)
+  capacity          Int      @default(0)
+  /**
+   * Plain uuid rather than a relation: a teacher leaving must not delete the class.
+   */
+  homeroomTeacherId String?  @map("homeroom_teacher_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [tenantId, academicYearId], references: [tenantId, id], onDelete: Cascade)
+  sections     Section[]
+  subjects     Subject[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, academicYearId, name])
@@ -194,17 +241,19 @@ model SchoolClass {
 }
 
 model Section {
-  id                  String               @id @default(uuid()) @db.Uuid
-  tenantId            String               @map("tenant_id") @db.Uuid
-  classId             String               @map("class_id") @db.Uuid
-  name                String               @db.VarChar(50)
-  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
-  announcements       Announcement[]
-  attendanceRecords   AttendanceRecord[]
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  classId   String   @map("class_id") @db.Uuid
+  name      String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  schoolClass SchoolClass @relation(fields: [tenantId, classId], references: [tenantId, id], onDelete: Cascade)
+
   enrolments          Enrolment[]
-  exams               Exam[]
-  schoolClass         SchoolClass          @relation(fields: [tenantId, classId], references: [tenantId, id], onDelete: Cascade)
   teachingAssignments TeachingAssignment[]
+  attendanceRecords   AttendanceRecord[]
+  exams               Exam[]
+  announcements       Announcement[]
   timetableSlots      TimetableSlot[]
 
   @@unique([tenantId, id])
@@ -214,15 +263,17 @@ model Section {
 }
 
 model Subject {
-  id                  String               @id @default(uuid()) @db.Uuid
-  tenantId            String               @map("tenant_id") @db.Uuid
-  classId             String               @map("class_id") @db.Uuid
-  name                String               @db.VarChar(100)
-  code                String?              @db.VarChar(30)
-  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
-  exams               Exam[]
-  schoolClass         SchoolClass          @relation(fields: [tenantId, classId], references: [tenantId, id], onDelete: Cascade)
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  classId   String   @map("class_id") @db.Uuid
+  name      String   @db.VarChar(100)
+  code      String?  @db.VarChar(30)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  schoolClass SchoolClass @relation(fields: [tenantId, classId], references: [tenantId, id], onDelete: Cascade)
+
   teachingAssignments TeachingAssignment[]
+  exams               Exam[]
   timetableSlots      TimetableSlot[]
 
   @@unique([tenantId, id])
@@ -231,25 +282,35 @@ model Subject {
   @@map("subjects")
 }
 
+enum EnrolmentStatus {
+  ACTIVE
+  COMPLETED
+  TRANSFERRED
+  WITHDRAWN
+}
+
 model Student {
-  id                String             @id @default(uuid()) @db.Uuid
-  tenantId          String             @map("tenant_id") @db.Uuid
-  userId            String?            @map("user_id") @db.Uuid
-  admissionNo       String             @map("admission_no") @db.VarChar(50)
-  firstName         String             @map("first_name") @db.VarChar(100)
-  lastName          String             @map("last_name") @db.VarChar(100)
-  dateOfBirth       DateTime?          @map("date_of_birth") @db.Date
-  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamp(6)
-  phone             String?            @db.VarChar(50)
-  guardianName      String?            @map("guardian_name") @db.VarChar(150)
-  guardianPhone     String?            @map("guardian_phone") @db.VarChar(50)
-  /// * Mirrors the active enrolment so the roster can filter without a join.
-  status            String             @default("ACTIVE") @db.VarChar(20)
-  attendanceRecords AttendanceRecord[]
-  enrolments        Enrolment[]
-  marks             Mark[]
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  userId        String?   @map("user_id") @db.Uuid
+  admissionNo   String    @map("admission_no") @db.VarChar(50)
+  firstName     String    @map("first_name") @db.VarChar(100)
+  lastName      String    @map("last_name") @db.VarChar(100)
+  dateOfBirth   DateTime? @map("date_of_birth") @db.Date
+  phone         String?   @db.VarChar(50)
+  guardianName  String?   @map("guardian_name") @db.VarChar(150)
+  guardianPhone String?   @map("guardian_phone") @db.VarChar(50)
+  /**
+   * Mirrors the active enrolment so the roster can filter without a join.
+   */
+  status        String    @default("ACTIVE") @db.VarChar(20)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user              User?              @relation(fields: [userId], references: [id])
+  user              User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  enrolments        Enrolment[]
+  attendanceRecords AttendanceRecord[]
+  marks             Mark[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, admissionNo])
@@ -259,18 +320,20 @@ model Student {
 }
 
 model Teacher {
-  id                  String               @id @default(uuid()) @db.Uuid
-  tenantId            String               @map("tenant_id") @db.Uuid
-  userId              String?              @map("user_id") @db.Uuid
-  employeeNo          String?              @map("employee_no") @db.VarChar(50)
-  firstName           String               @map("first_name") @db.VarChar(100)
-  lastName            String               @map("last_name") @db.VarChar(100)
-  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
-  phone               String?              @db.VarChar(50)
-  qualification       String?              @db.VarChar(150)
-  designation         String?              @db.VarChar(100)
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user                User?                @relation(fields: [userId], references: [id])
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  employeeNo    String?  @map("employee_no") @db.VarChar(50)
+  firstName     String   @map("first_name") @db.VarChar(100)
+  lastName      String   @map("last_name") @db.VarChar(100)
+  phone         String?  @db.VarChar(50)
+  qualification String?  @db.VarChar(150)
+  designation   String?  @db.VarChar(100)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   teachingAssignments TeachingAssignment[]
   timetableSlots      TimetableSlot[]
 
@@ -289,15 +352,30 @@ model Enrolment {
   academicYearId String          @map("academic_year_id") @db.Uuid
   status         EnrolmentStatus @default(ACTIVE)
   enrolledAt     DateTime        @default(now()) @map("enrolled_at") @db.Timestamp(6)
-  academicYear   AcademicYear    @relation(fields: [tenantId, academicYearId], references: [tenantId, id])
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  section        Section         @relation(fields: [tenantId, sectionId], references: [tenantId, id])
-  student        Student         @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+  section      Section      @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [tenantId, academicYearId], references: [tenantId, id], onDelete: Restrict)
 
   @@unique([tenantId, id])
   @@index([tenantId, studentId])
   @@index([tenantId, sectionId, academicYearId])
   @@map("enrolments")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum ExamStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
 
 model TeachingAssignment {
@@ -307,10 +385,11 @@ model TeachingAssignment {
   sectionId String   @map("section_id") @db.Uuid
   subjectId String   @map("subject_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  section   Section  @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Cascade)
-  subject   Subject  @relation(fields: [tenantId, subjectId], references: [tenantId, id], onDelete: Cascade)
-  teacher   Teacher  @relation(fields: [tenantId, teacherId], references: [tenantId, id], onDelete: Cascade)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [tenantId, teacherId], references: [tenantId, id], onDelete: Cascade)
+  section Section @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Cascade)
+  subject Subject @relation(fields: [tenantId, subjectId], references: [tenantId, id], onDelete: Cascade)
 
   @@unique([tenantId, id])
   @@unique([tenantId, teacherId, sectionId, subjectId])
@@ -328,15 +407,31 @@ model AttendanceRecord {
   status         AttendanceStatus
   markedBy       String           @map("marked_by") @db.Uuid
   createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
-  marker         User             @relation(fields: [markedBy], references: [id])
-  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  section        Section          @relation(fields: [tenantId, sectionId], references: [tenantId, id])
-  student        Student          @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+  section Section @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Restrict)
+  marker  User    @relation(fields: [markedBy], references: [id], onDelete: Restrict)
 
   @@unique([tenantId, id])
   @@unique([tenantId, sectionId, studentId, attendanceDate])
   @@index([tenantId, studentId, attendanceDate])
   @@map("attendance_records")
+}
+
+model AttendanceSettings {
+  id                        String   @id @default(uuid()) @db.Uuid
+  tenantId                  String   @map("tenant_id") @db.Uuid
+  allowTeacherEdit          Boolean  @default(true) @map("allow_teacher_edit")
+  requireParentNoteForExcused Boolean @default(false) @map("require_parent_note_for_excused")
+  lateThresholdMinutes      Int      @default(15) @map("late_threshold_minutes")
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId])
+  @@index([tenantId])
+  @@map("attendance_settings")
 }
 
 model Exam {
@@ -345,18 +440,21 @@ model Exam {
   subjectId   String     @map("subject_id") @db.Uuid
   sectionId   String     @map("section_id") @db.Uuid
   name        String     @db.VarChar(100)
+  term        String?    @db.VarChar(50)
   examDate    DateTime   @map("exam_date") @db.Date
   maxMarks    Int        @map("max_marks")
-  status      ExamStatus @default(SCHEDULED)
-  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
-  term        String?    @db.VarChar(50)
   passMarks   Int        @default(0) @map("pass_marks")
-  /// * Set when the marks are released to students and parents.
+  status      ExamStatus @default(SCHEDULED)
+  /**
+   * Set when the marks are released to students and parents.
+   */
   publishedAt DateTime?  @map("published_at") @db.Timestamp(6)
-  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  section     Section    @relation(fields: [tenantId, sectionId], references: [tenantId, id])
-  subject     Subject    @relation(fields: [tenantId, subjectId], references: [tenantId, id])
-  marks       Mark[]
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [tenantId, subjectId], references: [tenantId, id], onDelete: Restrict)
+  section Section @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Restrict)
+  marks   Mark[]
 
   @@unique([tenantId, id])
   @@index([tenantId, sectionId, examDate])
@@ -370,19 +468,26 @@ model Mark {
   examId    String   @map("exam_id") @db.Uuid
   studentId String   @map("student_id") @db.Uuid
   score     Decimal  @db.Decimal(7, 2)
+  remarks   String?  @db.VarChar(300)
   gradedBy  String?  @map("graded_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
-  remarks   String?  @db.VarChar(300)
-  grader    User?    @relation(fields: [gradedBy], references: [id])
-  exam      Exam     @relation(fields: [tenantId, examId], references: [tenantId, id], onDelete: Cascade)
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  student   Student  @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  exam    Exam    @relation(fields: [tenantId, examId], references: [tenantId, id], onDelete: Cascade)
+  student Student @relation(fields: [tenantId, studentId], references: [tenantId, id], onDelete: Cascade)
+  grader  User?   @relation(fields: [gradedBy], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, id])
   @@unique([tenantId, examId, studentId])
   @@index([tenantId, studentId])
   @@map("marks")
+}
+
+enum AnnouncementPriority {
+  NORMAL
+  IMPORTANT
+  URGENT
 }
 
 model Announcement {
@@ -391,24 +496,36 @@ model Announcement {
   sectionId   String?              @map("section_id") @db.Uuid
   createdBy   String               @map("created_by") @db.Uuid
   title       String               @db.VarChar(200)
-  content     String
+  content     String               @db.Text
+  /**
+   * Which groups see this on their announcement list.
+   */
+  audience    String[]             @default(["EVERYONE"])
+  priority    AnnouncementPriority @default(NORMAL)
+  /**
+   * Pinned notices sort above everything else.
+   */
+  pinned      Boolean              @default(false)
   publishedAt DateTime?            @map("published_at") @db.Timestamp(6)
   createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamp(6)
-  /// * Which groups see this on their announcement list.
-  audience    String[]             @default(["EVERYONE"])
-  priority    AnnouncementPriority @default(NORMAL)
-  /// * Pinned notices sort above everything else.
-  pinned      Boolean              @default(false)
-  creator     User                 @relation(fields: [createdBy], references: [id])
-  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  section     Section?             @relation(fields: [tenantId, sectionId], references: [tenantId, id])
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  section Section? @relation(fields: [tenantId, sectionId], references: [tenantId, id], onDelete: Restrict)
+  creator User     @relation(fields: [createdBy], references: [id], onDelete: Restrict)
 
   @@unique([tenantId, id])
   @@index([tenantId, publishedAt])
   @@index([tenantId, sectionId])
-  @@index([tenantId, pinned, publishedAt])
   @@map("announcements")
+}
+
+/**
+ * ------------------------------------------------------------------
+ */
+
+enum PlatformRole {
+  SUPER_ADMIN
 }
 
 model RefreshToken {
@@ -419,7 +536,8 @@ model RefreshToken {
   expiresAt DateTime  @map("expires_at") @db.Timestamp(6)
   revokedAt DateTime? @map("revoked_at") @db.Timestamp(6)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
   @@index([familyId])
@@ -431,57 +549,4 @@ model login_rate_limits {
   points     Int
   expire_at  DateTime @db.Timestamptz(6)
   created_at DateTime @default(now()) @db.Timestamptz(6)
-}
-
-enum TenantStatus {
-  ACTIVE
-  SUSPENDED
-}
-
-enum MembershipRole {
-  SCHOOL_ADMIN
-  TEACHER
-  STUDENT
-}
-
-enum MembershipStatus {
-  ACTIVE
-  INACTIVE
-}
-
-enum AcademicYearStatus {
-  UPCOMING
-  ACTIVE
-  COMPLETED
-}
-
-enum EnrolmentStatus {
-  ACTIVE
-  COMPLETED
-  TRANSFERRED
-  WITHDRAWN
-}
-
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  LATE
-  EXCUSED
-}
-
-enum ExamStatus {
-  SCHEDULED
-  COMPLETED
-  CANCELLED
-  IN_PROGRESS
-}
-
-enum AnnouncementPriority {
-  NORMAL
-  IMPORTANT
-  URGENT
-}
-
-enum PlatformRole {
-  SUPER_ADMIN
 }

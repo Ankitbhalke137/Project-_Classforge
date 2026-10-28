@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { hash } from "bcryptjs";
-import { MembershipRole } from "@prisma/client";
+import { MembershipRole, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
@@ -20,32 +20,34 @@ function generateTemporaryPassword(): string {
   return randomBytes(12).toString("base64url");
 }
 
-async function generateUniqueAdmissionNo(tenantId: string, preferred?: string): Promise<string> {
-  return withTenant(tenantId, async (tx) => {
-    if (preferred) {
-      const existing = await tx.student.findUnique({
-        where: { tenantId_admissionNo: { tenantId, admissionNo: preferred } },
-        select: { id: true },
+async function generateUniqueAdmissionNo(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  preferred?: string,
+): Promise<string> {
+  if (preferred) {
+    const existing = await tx.student.findUnique({
+      where: { tenantId_admissionNo: { tenantId, admissionNo: preferred } },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictError(`Admission number "${preferred}" is already in use at this school.`, {
+        admissionNo: "Already in use",
       });
-      if (existing) {
-        throw new ConflictError(`Admission number "${preferred}" is already in use at this school.`, {
-          admissionNo: "Already in use",
-        });
-      }
-      return preferred;
     }
+    return preferred;
+  }
 
-    const year = new Date().getFullYear();
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const candidate = `STU-${year}-${randomBytes(3).toString("hex").toUpperCase()}`;
-      const existing = await tx.student.findUnique({
-        where: { tenantId_admissionNo: { tenantId, admissionNo: candidate } },
-        select: { id: true },
-      });
-      if (!existing) return candidate;
-    }
-    return `STU-${year}-${Date.now().toString().slice(-6)}`;
-  });
+  const year = new Date().getFullYear();
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const candidate = `STU-${year}-${randomBytes(3).toString("hex").toUpperCase()}`;
+    const existing = await tx.student.findUnique({
+      where: { tenantId_admissionNo: { tenantId, admissionNo: candidate } },
+      select: { id: true },
+    });
+    if (!existing) return candidate;
+  }
+  return `STU-${year}-${Date.now().toString().slice(-6)}`;
 }
 
 const inviteSchema = z
@@ -92,8 +94,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
     let temporaryPassword: string | null = null;
 
     if (user) {
-      const existing = await prisma.membership.findUnique({
-        where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
+      const existing = await prisma.membership.findFirst({
+        where: { tenantId: tenant.id, userId: user.id },
       });
       if (existing) {
         throw new ConflictError("This person is already a member of this school.", {
@@ -109,22 +111,28 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
           name,
           email,
           passwordHash: await hash(temporaryPassword, 10),
+          mustChangePassword: true,
         },
       });
     } else if (!user.passwordHash) {
       temporaryPassword = generateTemporaryPassword();
       user = await prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash: await hash(temporaryPassword, 10) },
+        data: {
+          passwordHash: await hash(temporaryPassword, 10),
+          mustChangePassword: true,
+        },
       });
     }
 
-    await prisma.membership.create({
-      data: {
-        tenantId: tenant.id,
-        userId: user.id,
-        role: role as MembershipRole,
-      },
+    await withTenant(tenant.id, async (tx) => {
+      await tx.membership.create({
+        data: {
+          tenantId: tenant.id,
+          userId: user.id,
+          role: role as MembershipRole,
+        },
+      });
     });
 
     const [derivedFirst, ...rest] = name.trim().split(/\s+/);
@@ -163,7 +171,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ te
         });
 
         if (!currentStudent) {
-          const finalAdmissionNo = await generateUniqueAdmissionNo(tenant.id, input.admissionNo);
+          const finalAdmissionNo = await generateUniqueAdmissionNo(tx, tenant.id, input.admissionNo);
           currentStudent = await tx.student.create({
             data: {
               tenantId: tenant.id,

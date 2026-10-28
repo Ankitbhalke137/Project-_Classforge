@@ -10,6 +10,13 @@ import { Modal } from "@/components/ui/modal";
 import { PaginationBar } from "@/components/ui/pagination";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { TBody, TD, TH, THead, TR, Table, TableSkeleton } from "@/components/ui/table";
+import {
+  compactErrors,
+  dateError,
+  hasErrors,
+  integerError,
+  textError,
+} from "@/lib/validation";
 import { ApiError, schoolApi } from "@/lib/api";
 import { useApi, useIdentity, useMembership, useRole } from "@/lib/hooks";
 import { useAuth } from "@/store/auth";
@@ -48,8 +55,10 @@ export default function AssignmentsPage() {
   const [classId, setClassId] = useState("");
   const [onlyMine, setOnlyMine] = useState(!isStaff);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const classes = useApi(() => schoolApi.listClasses(schoolSlug), [schoolSlug]);
+  const subjects = useApi(() => schoolApi.listSubjects(schoolSlug), [schoolSlug]);
 
   const list = useApi(
     () =>
@@ -82,6 +91,11 @@ export default function AssignmentsPage() {
             isStaff
               ? "Homework set across the school, and how each class is getting on."
               : "Work set for you, and where each piece has got to."
+          }
+          action={
+            isStaff ? (
+              <Button onClick={() => setCreateOpen(true)}>Create assignment</Button>
+            ) : null
           }
         />
 
@@ -191,6 +205,19 @@ export default function AssignmentsPage() {
           assignmentId={openId}
           isStaff={isStaff}
           onClose={() => setOpenId(null)}
+        />
+      ) : null}
+
+      {createOpen ? (
+        <CreateAssignmentModal
+          schoolSlug={schoolSlug}
+          classes={classes.data ?? []}
+          subjects={subjects.data ?? []}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            setCreateOpen(false);
+            list.reload();
+          }}
         />
       ) : null}
     </RequireArea>
@@ -540,5 +567,154 @@ function SubmissionRow({
         </TR>
       ) : null}
     </>
+  );
+}
+
+function CreateAssignmentModal({
+  schoolSlug,
+  classes,
+  subjects,
+  onClose,
+  onCreated,
+}: {
+  schoolSlug: string;
+  classes: Array<{ id: string; name: string }>;
+  subjects: Array<{ id: string; name: string }>;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [classId, setClassId] = useState(classes[0]?.id ?? "");
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? "");
+  const [dueDate, setDueDate] = useState(() => {
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    return nextWeek.toISOString().split("T")[0];
+  });
+  const [maxMarks, setMaxMarks] = useState("20");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    // Why each field is validated before the call:
+    // - title: an assignment with no name cannot be found in the student list.
+    // - class / subject: a paper belongs to exactly one class and subject.
+    // - due date: students and the timetable sort by this date.
+    // - max marks: must be a whole number 1-100 so results are comparable.
+    const next: Record<string, string | null> = {};
+    next.title = textError(title, "Title", { min: 1, max: 150 });
+    if (!classId) next.classId = "Choose a class.";
+    if (!subjectId) next.subjectId = "Choose the subject.";
+    next.dueDate = dateError(dueDate, "Due date", { required: true });
+    next.maxMarks = integerError(maxMarks, {
+      label: "Max marks",
+      min: 1,
+      max: 100,
+      required: true,
+    });
+    setFields(compactErrors(next));
+    if (hasErrors(next)) {
+      setError(null);
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      await schoolApi.createAssignment(schoolSlug, {
+        title: title.trim(),
+        description: description.trim(),
+        classId,
+        subjectId,
+        dueDate,
+        maxMarks: Number(maxMarks) || 20,
+      });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not create assignment.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Create Assignment" size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error ? (
+          <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
+        ) : null}
+
+        <Input
+          label="Title"
+          required
+          error={fields.title}
+          placeholder="e.g. Chapter 4 Exercise Problems"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-slate-700">Description</label>
+          <textarea
+            rows={3}
+            className="w-full rounded-xl border border-slate-300 p-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            placeholder="Instructions for students..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Select
+            label="Class"
+            value={classId}
+            error={fields.classId}
+            onChange={(e) => setClassId(e.target.value)}
+            options={classes.map((c) => ({ value: c.id, label: c.name }))}
+          />
+          <Select
+            label="Subject"
+            value={subjectId}
+            error={fields.subjectId}
+            onChange={(e) => setSubjectId(e.target.value)}
+            options={subjects.map((s) => ({ value: s.id, label: s.name }))}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Due Date"
+            type="date"
+            required
+            error={fields.dueDate}
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+          />
+          <Input
+            label="Max Marks"
+            type="number"
+            min={1}
+            max={100}
+            required
+            error={fields.maxMarks}
+            value={maxMarks}
+            onChange={(e) => setMaxMarks(e.target.value)}
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={busy}>
+            Create Assignment
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

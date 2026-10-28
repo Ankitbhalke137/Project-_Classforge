@@ -16,17 +16,9 @@ import {
   StudentsIcon,
 } from "@/components/ui/icons";
 import { schoolApi } from "@/lib/api";
-import { useApi, useIdentity, useMembership } from "@/lib/hooks";
+import { useApi, useIdentity, useMembership, useSchoolCalendar } from "@/lib/hooks";
 import { schoolHref } from "@/lib/nav";
-import {
-  ACADEMIC_YEAR,
-  DAY_BREAKS,
-  currentTerm,
-  isoDate,
-  periodTime,
-  weekdayOf,
-  type PeriodTime,
-} from "@/lib/schedule";
+import { currentTerm, isoDate, weekdayOf, type TermWindow } from "@/lib/schedule";
 import { cn, formatDate } from "@/lib/utils";
 import { useAuth } from "@/store/auth";
 import type {
@@ -34,9 +26,27 @@ import type {
   AssignmentListRow,
   AttendanceSummary,
   Exam,
+  SchoolCalendar,
   SchoolClass,
   TimetableSlot,
 } from "@/types";
+
+/** The API returns terms as startDate/endDate; the calendar helpers want startsOn/endsOn. */
+function calendarTerms(calendar: SchoolCalendar | null): TermWindow[] {
+  return (calendar?.terms ?? []).map((term) => ({
+    label: term.label,
+    startsOn: term.startDate,
+    endsOn: term.endDate,
+  }));
+}
+
+/** The wall-clock times of one teaching period, as the school set them. */
+function findPeriod(
+  periods: SchoolCalendar["periods"],
+  period: number,
+): SchoolCalendar["periods"][number] | undefined {
+  return periods.find((row) => row.period === period);
+}
 
 /**
  * The landing screen for a teacher: the shape of their day, what is still
@@ -55,6 +65,8 @@ export function TeacherDashboard() {
   const today = new Date();
   const date = isoDate(today);
   const day = weekdayOf(today);
+  const { calendar } = useSchoolCalendar();
+  const periods = calendar?.periods ?? [];
   const classKey = teacher?.classIds.join(",") ?? "";
 
   const classes = useApi(() => schoolApi.listClasses(schoolSlug), [schoolSlug]);
@@ -95,7 +107,7 @@ export function TeacherDashboard() {
     .filter((slot) => slot.day === day && slot.teacherId === teacher?.id)
     .sort((a, b) => a.period - b.period);
 
-  const statusByPeriod = periodStatuses(slots, today);
+  const statusByPeriod = periodStatuses(slots, today, periods);
 
   /* --- Today's registers --- */
   const myClassIds = new Set(myClasses.map((item) => item.id));
@@ -130,7 +142,7 @@ export function TeacherDashboard() {
 
   return (
     <div className="space-y-6">
-      <PageHeading firstName={firstName} />
+      <PageHeading firstName={firstName} calendar={calendar} />
 
       {/* Scope banner — a teacher only ever sees their own classes. */}
       {myClasses.length > 0 ? (
@@ -201,7 +213,7 @@ export function TeacherDashboard() {
                 {slots.map((slot) => (
                   <PeriodRow
                     key={slot.id}
-                    time={periodTime(slot.period)}
+                    time={findPeriod(periods, slot.period)}
                     title={`${className(slot.classId)} · ${subjectName(slot.subjectId)}`}
                     subtitle={`Room ${allClasses.find((item) => item.id === slot.classId)?.room ?? "—"} · 45 minutes`}
                     status={statusByPeriod.get(slot.period) ?? "Upcoming"}
@@ -209,7 +221,11 @@ export function TeacherDashboard() {
                   />
                 ))}
               </ul>
-              <p className="mt-2 border-t border-line px-5 py-3 text-xs text-body">{DAY_BREAKS}</p>
+              {calendar?.breaks ? (
+                <p className="mt-2 border-t border-line px-5 py-3 text-xs text-body">
+                  {calendar.breaks}
+                </p>
+              ) : null}
             </>
           )}
         </Panel>
@@ -359,10 +375,17 @@ const TODAY = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-function PageHeading({ firstName }: { firstName: string }) {
+function PageHeading({
+  firstName,
+  calendar,
+}: {
+  firstName: string;
+  calendar: SchoolCalendar | null;
+}) {
   const today = new Date();
   const hour = today.getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const term = currentTerm(today, calendarTerms(calendar));
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -374,9 +397,12 @@ function PageHeading({ firstName }: { firstName: string }) {
       </div>
       <div className="text-right text-sm">
         <p className="text-body">{TODAY.format(today)}</p>
-        <p className="text-xs text-body">
-          Academic year {ACADEMIC_YEAR.label} · {currentTerm(today).label}
-        </p>
+        {(calendar?.academicYear || term) && (
+          <p className="text-xs text-body">
+            {calendar?.academicYear ? `Academic year ${calendar.academicYear.name}` : ""}
+            {term ? `${calendar?.academicYear ? " · " : ""}${term.label}` : ""}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -430,7 +456,7 @@ function PeriodRow({
   status,
   highlight,
 }: {
-  time: PeriodTime | undefined;
+  time: SchoolCalendar["periods"][number] | undefined;
   title: string;
   subtitle: string;
   status: SlotStatus;
@@ -554,17 +580,18 @@ function isRegisterMarked(summary: AttendanceSummary): boolean {
 function periodStatuses(
   slots: TimetableSlot[],
   now: Date,
+  periods: SchoolCalendar["periods"],
 ): Map<number, SlotStatus> {
   const statuses = new Map<number, SlotStatus>();
   const clock = now.getHours() * 60 + now.getMinutes();
   let nextAssigned = false;
 
   for (const slot of [...slots].sort((a, b) => a.period - b.period)) {
-    const time = periodTime(slot.period);
+    const time = findPeriod(periods, slot.period);
     if (!time) continue;
 
-    const start = minutesOf(time.start);
-    const end = minutesOf(time.end);
+    const start = minutesOf(time.startTime);
+    const end = minutesOf(time.endTime);
 
     if (end <= clock) statuses.set(slot.period, "Completed");
     else if (start <= clock && clock < end) statuses.set(slot.period, "In progress");

@@ -135,6 +135,7 @@ export async function POST(request:Request){
         name : user.name,
         email : user.email,
         isSuperAdmin,
+        mustChangePassword: user.mustChangePassword,
       },
       schools,
       csrfToken,

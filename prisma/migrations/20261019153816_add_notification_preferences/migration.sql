@@ -12,10 +12,10 @@ CREATE TABLE "notification_preferences" (
 );
 
 -- CreateIndex
-CREATE INDEX "notification_preferences_user_id_idx" ON "notification_preferences"("user_id");
+CREATE UNIQUE INDEX "notification_preferences_tenant_id_user_id_key" ON "notification_preferences"("tenant_id", "user_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "notification_preferences_tenant_id_user_id_key" ON "notification_preferences"("tenant_id", "user_id");
+CREATE INDEX "notification_preferences_user_id_idx" ON "notification_preferences"("user_id");
 
 -- AddForeignKey
 ALTER TABLE "notification_preferences" ADD CONSTRAINT "notification_preferences_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;

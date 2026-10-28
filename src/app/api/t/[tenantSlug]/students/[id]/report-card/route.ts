@@ -23,6 +23,7 @@ export async function GET(
       "SCHOOL_ADMIN",
       "TEACHER",
       "STUDENT",
+      "PARENT",
     ]);
 
     const term = (request.nextUrl.searchParams.get("term") ?? "").trim();

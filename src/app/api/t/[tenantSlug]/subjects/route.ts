@@ -4,7 +4,7 @@ import { resolveTenantContext, withTenant } from "@/lib/tenant-context";
 import { handleApiError } from "@/lib/errors";
 import { createSubject, listSubjects } from "@/lib/services/academic-service";
 
-const READ_ROLES = ["SCHOOL_ADMIN", "TEACHER", "STUDENT"] as const;
+const READ_ROLES = ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"] as const;
 
 export async function GET(
   request: NextRequest,

@@ -6,7 +6,6 @@ import {
   ClassesIcon,
   DashboardIcon,
   ExamsIcon,
-  FeesIcon,
   ReportsIcon,
   ScheduleIcon,
   SettingsIcon,
@@ -14,7 +13,7 @@ import {
   TeachersIcon,
 } from "@/components/ui/icons";
 import { canAccessArea, type SchoolArea } from "@/lib/roles";
-import type { Membership, Role, User } from "@/types";
+import type { Membership, Role, School, User } from "@/types";
 
 export interface NavItem {
   label: string;
@@ -49,21 +48,34 @@ export const SCHOOL_NAV: NavItem[] = [
   { label: "Schedule", area: "schedule", icon: ScheduleIcon },
   { label: "Assignments", area: "assignments", icon: AssignmentsIcon },
   { label: "Exams & Grades", area: "exams", icon: ExamsIcon },
-  { label: "Reports", area: "report-cards", path: "reports", icon: ReportsIcon, soon: true },
-  { label: "Fees", area: "fees", icon: FeesIcon },
+  { label: "Reports", area: "report-cards", path: "reports", icon: ReportsIcon },
+  { label: "Parents", area: "parents", path: "parents", icon: StudentsIcon },
   { label: "Announcements", area: "announcements", icon: AnnouncementsIcon },
-  { label: "Settings", area: "settings", icon: SettingsIcon, soon: true },
+  { label: "Settings", area: "settings", icon: SettingsIcon },
 ];
 
 /**
  * The URL for a screen.
  *
- * Accepts a bare area — `schoolHref("greenfield", "students")` — or a NavItem,
+ * Accepts a bare path — `schoolHref("greenfield", "students")` — or a NavItem,
  * which is how the sidebar reaches screens whose route is named differently.
  */
-export function schoolHref(schoolSlug: string, target: SchoolArea | NavItem): string {
+export function schoolHref(schoolSlug: string, target: string | NavItem): string {
   const path = typeof target === "string" ? target : (target.path ?? target.area);
   return `/${schoolSlug}/${path}`;
+}
+
+/**
+ * The URL for the screen guarded by a given area.
+ *
+ * Use this rather than `schoolHref` when the caller holds a permission key
+ * instead of a route: it resolves through the nav table, so an area whose route
+ * is named differently — Reports is guarded by `report-cards` — still lands on a
+ * URL that exists.
+ */
+export function schoolHrefForArea(schoolSlug: string, area: SchoolArea): string {
+  const item = SCHOOL_NAV.find((candidate) => candidate.area === area);
+  return schoolHref(schoolSlug, item ?? area);
 }
 
 /** Drops the items this role cannot open. */
@@ -76,6 +88,30 @@ export function landingPath(user: User | null, schools: Membership[]): string {
   if (!user) return "/login";
   if (user.isSuperAdmin) return "/platform";
 
-  const firstSchool = schools[0];
-  return firstSchool ? `/${firstSchool.schoolSlug}/dashboard` : "/no-access";
+  const active = schools.length > 0 ? schools[0] : null;
+  return active ? `/${active.schoolSlug}/dashboard` : "/no-access";
+}
+
+/** All distinct (school, role) combinations the user can sign in as,
+ * de-duplicated so the same school with two roles shows both options. */
+export function loginContexts(schools: Membership[]): { schoolSlug: string; schoolName: string; role: Role; status: School["status"] }[] {
+  const seen = new Set<string>();
+  return schools
+    .filter((s) => {
+      const key = `${s.schoolSlug}|${s.role}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((s) => ({
+      schoolSlug: s.schoolSlug,
+      schoolName: s.schoolName,
+      role: s.role,
+      status: s.status,
+    }));
+}
+
+/** True when the user has more than one sign-in context to choose from. */
+export function needsSchoolSelection(schools: Membership[]): boolean {
+  return loginContexts(schools).length > 1;
 }

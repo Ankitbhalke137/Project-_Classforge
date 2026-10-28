@@ -5,7 +5,7 @@ import { handleApiError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { getTimetable, replaceTimetable } from "@/lib/services/academic-service";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const READ_ROLES = ["SCHOOL_ADMIN", "TEACHER", "STUDENT"] as const;
+const READ_ROLES = ["SCHOOL_ADMIN", "TEACHER", "STUDENT", "PARENT"] as const;
 
 /**
  * GET /api/t/:tenantSlug/classes/:id/timetable

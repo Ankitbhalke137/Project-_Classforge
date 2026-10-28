@@ -56,7 +56,9 @@ function createAuthRequest(
   headers.set("Content-Type", "application/json");
   headers.set("Cookie", `${ACCESS_TOKEN_COOKIE}=${token}`);
 
-  const init: RequestInit = {
+  // NextRequest's RequestInit forbids `signal: null` on the DOM's RequestInit
+  // type, so build the init without widening it to the DOM RequestInit type.
+  const init: Omit<RequestInit, "signal"> = {
     method,
     headers,
   };
@@ -721,9 +723,10 @@ async function runSuite() {
     // Deactivate Teacher A1's membership in School A
     await prisma.membership.update({
       where: {
-        tenantId_userId: {
+        tenantId_userId_role: {
           tenantId: memberTeacherA1.tenantId,
           userId: memberTeacherA1.userId,
+          role: memberTeacherA1.role,
         },
       },
       data: { status: "INACTIVE" },
@@ -745,9 +748,10 @@ async function runSuite() {
     // 7.2 Restore active membership: User access restored
     await prisma.membership.update({
       where: {
-        tenantId_userId: {
+        tenantId_userId_role: {
           tenantId: memberTeacherA1.tenantId,
           userId: memberTeacherA1.userId,
+          role: memberTeacherA1.role,
         },
       },
       data: { status: "ACTIVE" },

@@ -11,7 +11,7 @@ import { PaginationBar } from "@/components/ui/pagination";
 import { EmptyState, PageHeader } from "@/components/ui/states";
 import { TableSkeleton } from "@/components/ui/table";
 import { ApiError, schoolApi } from "@/lib/api";
-import { useApi, useMembership, useRole } from "@/lib/hooks";
+import { useApi, useIdentity, useMembership, useRole } from "@/lib/hooks";
 import type { Announcement, AnnouncementPriority } from "@/types";
 import { ANNOUNCEMENT_AUDIENCES } from "@/types";
 
@@ -31,6 +31,10 @@ export default function AnnouncementsPage() {
   const schoolSlug = useMembership()?.schoolSlug ?? "";
   const role = useRole();
   const canPost = role === "SCHOOL_ADMIN" || role === "TEACHER";
+  const isTeacher = role === "TEACHER";
+
+  const { identity } = useIdentity();
+  const teacherId = identity?.teacher?.id ?? "";
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -43,12 +47,36 @@ export default function AnnouncementsPage() {
       schoolApi.listAnnouncements(schoolSlug, {
         page,
         search,
-        // An empty filter means "any", which the API spells as absent.
         priority: priority || undefined,
         audience,
       }),
     [schoolSlug, page, search, priority, audience],
   );
+
+  const classesWithSections = useApi(
+    () => schoolApi.listClassesWithSections(schoolSlug),
+    [schoolSlug],
+  );
+
+  const assignments = useApi(
+    () =>
+      teacherId
+        ? schoolApi.listTeachingAssignments(schoolSlug, { teacherId })
+        : Promise.resolve([]),
+    [schoolSlug, teacherId],
+  );
+
+  const assignedSectionIds = new Set((assignments.data ?? []).map((row) => row.sectionId));
+  const classRows = classesWithSections.data?.data ?? [];
+  const allSections = classRows.flatMap((row) =>
+    row.sections.map((section) => ({
+      value: section.id,
+      label: `${row.name} · ${section.name}`,
+    })),
+  );
+  const sectionOptions = isTeacher
+    ? allSections.filter((section) => assignedSectionIds.has(section.value))
+    : allSections;
 
   const rows = list.data?.data ?? [];
 
@@ -148,6 +176,9 @@ export default function AnnouncementsPage() {
       {composing ? (
         <ComposeNotice
           schoolSlug={schoolSlug}
+          role={role}
+          isTeacher={isTeacher}
+          sectionOptions={sectionOptions}
           onClose={() => setComposing(false)}
           onPosted={() => {
             setComposing(false);
@@ -196,10 +227,16 @@ function AnnouncementCard({ notice }: { notice: Announcement }) {
 
 function ComposeNotice({
   schoolSlug,
+  role,
+  isTeacher,
+  sectionOptions,
   onClose,
   onPosted,
 }: {
   schoolSlug: string;
+  role: import("@/types").Role | null;
+  isTeacher: boolean;
+  sectionOptions: { value: string; label: string }[];
   onClose: () => void;
   onPosted: () => void;
 }) {
@@ -207,10 +244,24 @@ function ComposeNotice({
   const [body, setBody] = useState("");
   const [priority, setPriority] = useState<AnnouncementPriority>("NORMAL");
   const [audience, setAudience] = useState<Announcement["audience"]>(["EVERYONE"]);
+  const [sectionId, setSectionId] = useState("");
   const [busy, setBusy] = useState(false);
   const [fields, setFields] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const canPostSchoolWide = role === "SCHOOL_ADMIN";
+
+  function clearField(field: string) {
+    setFields((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
 
   function toggleAudience(value: (typeof ANNOUNCEMENT_AUDIENCES)[number]) {
+    clearField("audience");
     setAudience((current) =>
       current.includes(value)
         ? current.filter((item) => item !== value)
@@ -219,18 +270,54 @@ function ComposeNotice({
   }
 
   async function onSubmit() {
+    // The server validates all of this too; checking first puts the message on
+    // the field instead of making the person read a banner.
+    const next: Record<string, string> = {};
+    if (title.trim().length < 3) {
+      next.title = "Give the notice a title (at least 3 characters).";
+    }
+    if (!body.trim()) {
+      next.body = "Write the notice.";
+    }
+    if (audience.length === 0) {
+      next.audience = "Choose at least one audience.";
+    }
+    if (isTeacher && !sectionId) {
+      next.sectionId = "Choose one of your assigned sections.";
+    }
+
+    setFields(next);
+    setSubmitError(null);
+    if (Object.keys(next).length > 0) return;
+
     setBusy(true);
-    setFields({});
 
     try {
-      await schoolApi.createAnnouncement(schoolSlug, { title, body, priority, audience });
+      await schoolApi.createAnnouncement(schoolSlug, {
+        title: title.trim(),
+        body: body.trim(),
+        priority,
+        audience,
+        sectionId: sectionId || undefined,
+      });
       onPosted();
     } catch (caught) {
-      setFields(caught instanceof ApiError ? caught.fields : {});
+      if (caught instanceof ApiError) {
+        setFields(caught.fields);
+        if (!Object.keys(caught.fields).length) {
+          setSubmitError(caught.message || "Could not post this notice.");
+        }
+      } else {
+        setSubmitError("Could not post this notice. Try again.");
+      }
     } finally {
       setBusy(false);
     }
   }
+
+  const sectionChoices = canPostSchoolWide
+    ? [{ value: "", label: "School-wide" }, ...sectionOptions]
+    : sectionOptions;
 
   return (
     <Modal
@@ -251,27 +338,48 @@ function ComposeNotice({
       }
     >
       <div className="space-y-4">
+        {submitError ? (
+          <p role="alert" className="rounded-xl border border-danger-100 bg-danger-50 px-4 py-3 text-sm text-danger-600">
+            {submitError}
+          </p>
+        ) : null}
+
         <Input
           label="Title"
           required
           value={title}
-          onChange={(event) => setTitle(event.target.value)}
+          onChange={(event) => {
+            setTitle(event.target.value);
+            clearField("title");
+          }}
           error={fields.title}
           placeholder="What is this about?"
         />
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="notice-body" className="text-sm font-medium text-ink">
-            Message
+            Message <span className="text-danger-600">*</span>
           </label>
           <textarea
             id="notice-body"
             rows={5}
             value={body}
-            onChange={(event) => setBody(event.target.value)}
+            aria-invalid={fields.body ? true : undefined}
+            aria-describedby={fields.body ? "notice-body-error" : undefined}
+            onChange={(event) => {
+              setBody(event.target.value);
+              clearField("body");
+            }}
             placeholder="The detail people actually need to act on."
-            className="w-full rounded-lg bg-white px-3 py-2 text-sm text-ink placeholder:text-muted ring-1 ring-line focus:outline-2 focus:outline-offset-1 focus:outline-brand-600"
+            className={`w-full rounded-lg bg-white px-3 py-2 text-sm text-ink placeholder:text-muted ring-1 focus:outline-2 focus:outline-offset-1 focus:outline-brand-600 ${
+              fields.body ? "ring-danger-600" : "ring-line"
+            }`}
           />
+          {fields.body ? (
+            <p id="notice-body-error" role="alert" className="text-xs text-danger-600">
+              {fields.body}
+            </p>
+          ) : null}
         </div>
 
         <Select
@@ -284,6 +392,31 @@ function ComposeNotice({
             { value: "URGENT", label: "Urgent" },
           ]}
         />
+
+        {sectionChoices.length > 0 ? (
+          <Select
+            label="Section"
+            required={isTeacher}
+            value={sectionId}
+            error={fields.sectionId}
+            onChange={(event) => {
+              setSectionId(event.target.value);
+              clearField("sectionId");
+            }}
+            options={sectionChoices}
+            hint={
+              isTeacher
+                ? "Choose one of your assigned sections. School-wide notices are restricted to School Admins."
+                : "Leave as School-wide to reach the whole school, or pick a section."
+            }
+          />
+        ) : (
+          <p className="text-xs text-body">
+            {isTeacher
+              ? "You are not assigned to any section yet. Ask a School Admin to assign you a class."
+              : "No sections are configured for this school yet."}
+          </p>
+        )}
 
         <fieldset>
           <legend className="text-sm font-medium text-ink">Audience</legend>
@@ -304,6 +437,11 @@ function ComposeNotice({
               </button>
             ))}
           </div>
+          {fields.audience ? (
+            <p role="alert" className="mt-2 text-xs text-danger-600">
+              {fields.audience}
+            </p>
+          ) : null}
         </fieldset>
       </div>
     </Modal>
