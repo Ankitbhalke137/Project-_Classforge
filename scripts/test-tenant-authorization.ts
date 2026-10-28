@@ -16,7 +16,7 @@
  */
 
 import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env.local", override: true });
 dotenv.config();
 
 import { NextRequest } from "next/server";
@@ -445,21 +445,27 @@ async function runSuite() {
     // =========================================================================
     console.log("\n--- SCENARIO 3: Cross-Tenant Write ---");
 
-    // 3.1 Raw SQL: Attempt to insert row for Tenant B while Tenant A context is active
+    // 3.1 Raw SQL / Prisma: Attempt to insert row for Tenant B while Tenant A context is active
     let rlsCheckFailedAsExpected = false;
     try {
       await appPrisma.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe(`SET LOCAL app.current_tenant_id = '${tenantA.id}';`);
-        await tx.$executeRawUnsafe(`
-          INSERT INTO students (id, tenant_id, admission_no, first_name, last_name, status, created_at, updated_at)
-          VALUES (gen_random_uuid(), '${tenantB.id}', 'HACK-${runId}', 'Spoofed', 'Student', 'ACTIVE', now(), now());
-        `);
+        await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantA.id}, true)`;
+        await tx.student.create({
+          data: {
+            tenantId: tenantB.id,
+            admissionNo: `HACK-${runId}`,
+            firstName: "Spoofed",
+            lastName: "Student",
+            status: "ACTIVE",
+          },
+        });
       });
     } catch (err: any) {
       rlsCheckFailedAsExpected =
-        err.message.includes("row-level security") ||
-        err.message.includes("42501") ||
-        err.message.includes("violates");
+        err.code === "P2004" ||
+        err.message?.includes("row-level security") ||
+        err.message?.includes("violates") ||
+        err.code === "42501";
     }
     assert(
       rlsCheckFailedAsExpected,
@@ -663,11 +669,11 @@ async function runSuite() {
         tenantA.id,
         examA1.id,
         userTeacherA2.id,
-        [{ studentId: studentA1.id, score: 92 }],
+        { records: [{ studentId: studentA1.id, score: 92 }] },
         "TEACHER",
       );
     } catch (err: any) {
-      unassignedMarksBlocked = err.statusCode === 403 || err.message.includes("not assigned");
+      unassignedMarksBlocked = err.statusCode === 403 || err.message?.includes("not assigned");
     }
     assert(
       unassignedMarksBlocked,
@@ -681,10 +687,11 @@ async function runSuite() {
         tenantA.id,
         examA1.id,
         userTeacherA1.id,
-        [{ studentId: studentA1.id, score: 95 }],
+        { records: [{ studentId: studentA1.id, score: 95 }] },
         "TEACHER",
       );
-      assignedMarksSuccess = Array.isArray(marksRes) && marksRes.length === 1 && marksRes[0].score === 95;
+      const studentResult = marksRes?.results?.find((r: any) => r.studentId === studentA1.id);
+      assignedMarksSuccess = !!studentResult && Number(studentResult.marksObtained) === 95;
     } catch (err) {
       console.error("Assigned teacher marks error:", err);
     }
@@ -700,10 +707,11 @@ async function runSuite() {
         tenantA.id,
         examA1.id,
         userAdminA.id,
-        [{ studentId: studentA1.id, score: 98 }],
+        { records: [{ studentId: studentA1.id, score: 98 }] },
         "SCHOOL_ADMIN",
       );
-      adminMarksSuccess = Array.isArray(adminMarks) && adminMarks[0].score === 98;
+      const studentResult = adminMarks?.results?.find((r: any) => r.studentId === studentA1.id);
+      adminMarksSuccess = !!studentResult && Number(studentResult.marksObtained) === 98;
     } catch (err) {
       console.error("Admin marks error:", err);
     }
@@ -720,7 +728,12 @@ async function runSuite() {
     // 7.1 User with inactive membership
     // Deactivate Teacher A1's membership in School A
     await prisma.membership.update({
-      where: { id: memberTeacherA1.id },
+      where: {
+        tenantId_userId: {
+          tenantId: tenantA.id,
+          userId: userTeacherA1.id,
+        },
+      },
       data: { status: "INACTIVE" },
     });
 
@@ -739,7 +752,12 @@ async function runSuite() {
 
     // 7.2 Restore active membership: User access restored
     await prisma.membership.update({
-      where: { id: memberTeacherA1.id },
+      where: {
+        tenantId_userId: {
+          tenantId: tenantA.id,
+          userId: userTeacherA1.id,
+        },
+      },
       data: { status: "ACTIVE" },
     });
 

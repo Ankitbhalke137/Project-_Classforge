@@ -21,6 +21,8 @@
     "test:p1": "tsx scripts/test-p1-implementation.ts",
     "db:assign-teachers": "tsx scripts/assign-students-to-teachers.ts",
     "db:seed-demo": "tsx scripts/seed-demo-students.ts",
+    "db:seed-500": "tsx scripts/seed-500-students.ts",
+    "db:seed-dual": "tsx scripts/seed-dual-membership-users.ts",
     "db:assign-noida": "tsx scripts/assign-noida-teacher.ts",
     "test:rate-limit": "tsx scripts/test-rate-limit.ts",
     "test:csrf": "tsx scripts/test-csrf.ts",
