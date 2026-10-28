@@ -3,6 +3,7 @@
 import { useId } from "react";
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
+import { ChevronDownIcon } from "@/components/ui/icons";
 
 /**
  * 48px control height, white fill, 1px `#e2e8f0` outline, rounded-xl. Focus moves
@@ -96,18 +97,27 @@ export function Select({ label, error, hint, options, className, id, ...props }:
 
   return (
     <Field label={label} htmlFor={selectId} error={error} hint={hint} required={props.required}>
-      <select
-        id={selectId}
-        aria-invalid={error ? true : undefined}
-        className={cn(CONTROL, className)}
-        {...props}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <div className="relative">
+        <select
+          id={selectId}
+          aria-invalid={error ? true : undefined}
+          className={cn(
+            CONTROL,
+            "appearance-none bg-white pr-10",
+            className,
+          )}
+          {...props}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+          <ChevronDownIcon width={16} height={16} className="text-muted" />
+        </div>
+      </div>
     </Field>
   );
 }

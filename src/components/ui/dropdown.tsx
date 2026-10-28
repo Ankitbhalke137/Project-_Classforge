@@ -89,7 +89,11 @@ export function Dropdown({
               }}
               className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-ink hover:bg-page"
             >
-              {item.icon}
+              {item.icon ? (
+                <span className="flex size-7 shrink-0 items-center justify-center text-body">
+                  {item.icon}
+                </span>
+              ) : null}
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium text-primary">{item.label}</span>
                 {item.description ? (

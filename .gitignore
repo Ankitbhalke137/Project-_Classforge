@@ -41,3 +41,9 @@ yarn-error.log*
 next-env.d.ts
 !.env.example
 AGENTS.md
+improvements.csv
+demo_flow.md
+all_ids_pass_time.csv
+bugs.csv
+PRD_PENDING_AUDIT.md
+test_cases.csv

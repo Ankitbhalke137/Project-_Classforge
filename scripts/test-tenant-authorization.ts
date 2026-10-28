@@ -64,7 +64,7 @@ function createAuthRequest(
     init.body = JSON.stringify(body);
   }
 
-  return new NextRequest(new URL(url, "http://localhost:3000"), init);
+  return new NextRequest(new URL(url, "http://localhost:3000"), init as any);
 }
 
 async function runSuite() {
@@ -720,7 +720,12 @@ async function runSuite() {
     // 7.1 User with inactive membership
     // Deactivate Teacher A1's membership in School A
     await prisma.membership.update({
-      where: { id: memberTeacherA1.id },
+      where: {
+        tenantId_userId: {
+          tenantId: memberTeacherA1.tenantId,
+          userId: memberTeacherA1.userId,
+        },
+      },
       data: { status: "INACTIVE" },
     });
 
@@ -739,7 +744,12 @@ async function runSuite() {
 
     // 7.2 Restore active membership: User access restored
     await prisma.membership.update({
-      where: { id: memberTeacherA1.id },
+      where: {
+        tenantId_userId: {
+          tenantId: memberTeacherA1.tenantId,
+          userId: memberTeacherA1.userId,
+        },
+      },
       data: { status: "ACTIVE" },
     });
 
