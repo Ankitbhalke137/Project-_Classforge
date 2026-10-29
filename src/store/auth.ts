@@ -26,7 +26,7 @@ interface AuthState {
   passwordChanged: () => void;
 }
 
-export const useAuth = create<AuthState>((set) => ({
+export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   schools: [],
   activeSchoolSlug: null,
@@ -58,10 +58,17 @@ export const useAuth = create<AuthState>((set) => ({
         const { user: meUser, schools: meSchools } = await authApi.me();
         // Re-derive roles from memberships.
         const roles = meSchools.map((m) => m.role);
-        set({ user: { ...meUser, roles }, schools: meSchools });
+        const user = { ...meUser, roles };
+        set({ user, schools: meSchools });
+
+        // Read the context *now* rather than writing back the values captured
+        // before `/me` was awaited. The school switcher may have changed it
+        // while that request was in flight, and a slow response used to undo
+        // the user's choice.
+        const { activeSchoolSlug, activeRole } = get();
         sessionStorage.setItem(
           STORAGE_KEY,
-          JSON.stringify({ user: { ...meUser, roles }, schools: meSchools, activeSchoolSlug: restoredSchoolSlug, activeRole: restoredRole }),
+          JSON.stringify({ user, schools: meSchools, activeSchoolSlug, activeRole }),
         );
       } catch {
         sessionStorage.removeItem(STORAGE_KEY);

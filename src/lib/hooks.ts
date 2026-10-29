@@ -6,6 +6,7 @@ import { schoolApi } from "@/lib/api";
 import {
   canAccessArea,
   canPerform,
+  ROLE_PRIORITY,
   type Action,
   type SchoolArea,
 } from "@/lib/roles";
@@ -38,23 +39,23 @@ export function useMembership(): Membership | null {
     if (chosen) return chosen;
   }
 
-  return schools.find((school) => school.schoolSlug === slug) ?? null;
+  // No explicit choice (or a stale one): fall back to the most privileged role
+  // in this school, matching the backend. Falling back to row order made the UI
+  // say "teacher" while the API acted as "school admin", which left the teacher
+  // notice form without a teacher profile or any sections.
+  return (
+    [...schools.filter((school) => school.schoolSlug === slug)].sort(
+      (a, b) => ROLE_PRIORITY[b.role] - ROLE_PRIORITY[a.role],
+    )[0] ?? null
+  );
 }
 
 /** The role this account holds in the school in the URL. */
 export function useRole(): Role | null {
   const user = useAuth((state) => state.user);
   const membership = useMembership();
-  const activeSchoolSlug = useAuth((state) => state.activeSchoolSlug);
-  const activeRole = useAuth((state) => state.activeRole);
-  const slug = useSchoolSlug();
 
   if (user?.isSuperAdmin) return "SUPER_ADMIN";
-
-  // If the user has chosen an active role for the current school, use it.
-  if (slug && activeSchoolSlug === slug && activeRole) {
-    return activeRole;
-  }
 
   return membership?.role ?? null;
 }
@@ -126,11 +127,18 @@ export function useDebounced<T>(value: T, delay = 300): T {
 export function useIdentity(): { identity: SchoolIdentity | null; loading: boolean } {
   const email = useAuth((state) => state.user?.email);
   const schoolSlug = useSchoolSlug();
-  const activeRole = useAuth((state) => state.activeRole);
+  // Use the same effective role the rest of the UI renders with, so the profile
+  // the API returns always belongs to the role on screen.
+  const role = useRole();
 
   const { data, loading } = useApi(
-    () => schoolApi.getIdentity(schoolSlug ?? "", email ?? "", activeRole ?? undefined),
-    [schoolSlug, email, activeRole],
+    () =>
+      schoolApi.getIdentity(
+        schoolSlug ?? "",
+        email ?? "",
+        role && role !== "SUPER_ADMIN" ? role : undefined,
+      ),
+    [schoolSlug, email, role],
   );
 
   return { identity: data, loading };

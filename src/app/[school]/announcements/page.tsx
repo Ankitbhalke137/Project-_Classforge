@@ -34,7 +34,6 @@ export default function AnnouncementsPage() {
   const isTeacher = role === "TEACHER";
 
   const { identity } = useIdentity();
-  const teacherId = identity?.teacher?.id ?? "";
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -57,15 +56,10 @@ export default function AnnouncementsPage() {
   // picker needs. It is a flat array, not grouped by class.
   const classes = useApi(() => schoolApi.listClasses(schoolSlug), [schoolSlug]);
 
-  const assignments = useApi(
-    () =>
-      teacherId
-        ? schoolApi.listTeachingAssignments(schoolSlug, { teacherId })
-        : Promise.resolve([]),
-    [schoolSlug, teacherId],
-  );
-
-  const assignedSectionIds = new Set((assignments.data ?? []).map((row) => row.sectionId));
+  // `identity.teacher.classIds` already covers both sections they teach and
+  // sections of classes they are homeroom teacher of — the same two cases the
+  // backend accepts when posting.
+  const assignedSectionIds = new Set(identity?.teacher?.classIds ?? []);
   const sectionRows = classes.data ?? [];
   const allSections = sectionRows.map((row) => ({
     value: row.id,
