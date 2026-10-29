@@ -16,6 +16,7 @@ import type {
   AttendanceSummary,
   AttendanceTrendPoint,
   Student,
+  StudentAttendance,
 } from "@/types";
 import { ATTENDANCE_STATUSES } from "@/types";
 
@@ -322,7 +323,18 @@ function OwnAttendance() {
   const activeId = studentId || people[0]?.id || "";
 
   const record = useApi(
-    () => schoolApi.getStudentAttendance(schoolSlug, activeId, { days: 30 }),
+    () =>
+      // The identity request has not come back yet, so there is no student id
+      // to ask about. Calling the API with an empty id builds
+      // `/students//attendance`, which the route matches as `/students/attendance`
+      // and rejects with a 404 — noise on every visit to this page.
+      activeId
+        ? schoolApi.getStudentAttendance(schoolSlug, activeId, { days: 30 })
+        : Promise.resolve<StudentAttendance>({
+            studentId: "",
+            records: [],
+            summary: { total: 0, present: 0, absent: 0, late: 0, excused: 0, percentage: 0 },
+          }),
     [schoolSlug, activeId],
   );
 
