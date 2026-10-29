@@ -84,6 +84,32 @@ function getCsrfCookie(): string | null {
   return match ? decodeURIComponent(match.substring("csrf_token=".length)) : null;
 }
 
+/**
+ * The role the person chose for the school in the URL, when they hold more than
+ * one there (e.g. SCHOOL_ADMIN and TEACHER). The backend validates it against
+ * their real memberships, so this only tells it which context to act in.
+ */
+function getActiveRoleForPath(path: string): string | null {
+  if (typeof window === "undefined") return null;
+
+  const tenant = /^\/api\/t\/([^/?#]+)(?:\/|$)/.exec(path);
+  if (!tenant) return null;
+
+  try {
+    const saved = sessionStorage.getItem("classforge.session");
+    if (!saved) return null;
+    const { activeSchoolSlug, activeRole } = JSON.parse(saved) as {
+      activeSchoolSlug?: string | null;
+      activeRole?: string | null;
+    };
+    if (activeSchoolSlug !== decodeURIComponent(tenant[1]) || !activeRole) return null;
+    return activeRole;
+  } catch {
+    // A malformed client copy is ignored; the backend falls back on its own.
+    return null;
+  }
+}
+
 export async function api<T>(
   path: string,
   options: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
@@ -95,6 +121,12 @@ export async function api<T>(
 
   if (options.body) {
     headers["Content-Type"] = "application/json";
+  }
+
+  // Tell tenant endpoints which of the person's roles is active there.
+  if (!headers["x-active-role"]) {
+    const activeRole = getActiveRoleForPath(path);
+    if (activeRole) headers["x-active-role"] = activeRole;
   }
 
   // Automatically attach CSRF token for state-changing requests in the browser

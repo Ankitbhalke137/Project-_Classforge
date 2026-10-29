@@ -5,6 +5,7 @@ import { verifyAccessToken } from "@/lib/auth";
 import { ACCESS_TOKEN_COOKIE } from "@/lib/auth-cookies";
 import { UnauthorizedError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { assertCsrfProtection, isSafeMethod } from "@/lib/csrf";
+import { ROLE_PRIORITY } from "@/lib/roles";
 
 export interface TenantContext {
   tenant: {
@@ -160,6 +161,9 @@ export async function authenticateRequest(request: Request | NextRequest) {
  * - Valid session without active membership in that school returns 403.
  * - Disallowed role returns 403.
  * - Super Admin has no implicit access to student data without school membership.
+ * - When a person holds several roles in the school, the `x-active-role` request
+ *   header (set by the client's school/role switcher) picks which membership the
+ *   request acts as. Without it, the most privileged allowed role wins.
  */
 export async function resolveTenantContext(
   request: Request | NextRequest,
@@ -195,17 +199,29 @@ export async function resolveTenantContext(
     throw new ForbiddenError("You do not have access to this school.");
   }
 
-  // Use the first membership as the active context for this school.
-  const membership = memberships[0];
-
   // 3. Verify role authorization if specified — check ALL memberships, not
   // just the first one, so a user with multiple roles (e.g. TEACHER and
   // SCHOOL_ADMIN) can access endpoints requiring any of their roles.
-  if (allowedRoles && allowedRoles.length > 0) {
-    if (!memberships.some((m) => allowedRoles.includes(m.role))) {
-      throw new ForbiddenError("You do not have permission to perform this action.");
-    }
+  const allowed = allowedRoles && allowedRoles.length > 0 ? allowedRoles : null;
+  if (allowed && !memberships.some((m) => allowed.includes(m.role))) {
+    throw new ForbiddenError("You do not have permission to perform this action.");
   }
+
+  // 4. Pick which membership this request acts as.
+  //
+  // A person can hold more than one role in the same school. The client sends
+  // the role they chose in the school switcher as `x-active-role`; honour it
+  // when they really hold that role (and the endpoint allows it). Otherwise
+  // fall back to the most privileged allowed role, then to the first row.
+  // Without this, behaviour depended on database row order, so an account that
+  // was both TEACHER and SCHOOL_ADMIN could be treated as a teacher when
+  // posting a school-wide notice.
+  const requestedRole = request.headers.get("x-active-role") ?? "";
+  const eligible = allowed ? memberships.filter((m) => allowed.includes(m.role)) : memberships;
+  const membership =
+    eligible.find((m) => m.role === requestedRole) ??
+    [...eligible].sort((a, b) => ROLE_PRIORITY[b.role] - ROLE_PRIORITY[a.role])[0] ??
+    memberships[0];
 
   return {
     tenant: {

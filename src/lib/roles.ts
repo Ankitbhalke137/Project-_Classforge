@@ -101,6 +101,20 @@ export type Action = keyof typeof ACTIONS;
 export const SCHOOL_SCOPES = ["ALL", "ASSIGNED", "OWN"] as const;
 export type SchoolScope = (typeof SCHOOL_SCOPES)[number];
 
+/**
+ * Who outranks whom. A person can hold several roles in the same school (for
+ * example a School Admin who also teaches), so when nothing more specific is
+ * asked for, the most privileged role is the sensible default. This also keeps
+ * behaviour independent of the order database rows happen to come back in.
+ */
+export const ROLE_PRIORITY: Record<Role, number> = {
+  SUPER_ADMIN: 5,
+  SCHOOL_ADMIN: 4,
+  TEACHER: 3,
+  STUDENT: 2,
+  PARENT: 1,
+};
+
 /** The Super Admin has no membership, so it holds no scope inside a school. */
 export const ROLE_SCOPES: Record<Exclude<Role, "SUPER_ADMIN">, SchoolScope> = {
   SCHOOL_ADMIN: "ALL",

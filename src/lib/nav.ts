@@ -12,7 +12,7 @@ import {
   StudentsIcon,
   TeachersIcon,
 } from "@/components/ui/icons";
-import { canAccessArea, type SchoolArea } from "@/lib/roles";
+import { canAccessArea, ROLE_PRIORITY, type SchoolArea } from "@/lib/roles";
 import type { Membership, Role, School, User } from "@/types";
 
 export interface NavItem {
@@ -109,6 +109,24 @@ export function loginContexts(schools: Membership[]): { schoolSlug: string; scho
       role: s.role,
       status: s.status,
     }));
+}
+
+/**
+ * The context to open first after signing in: the most privileged role in the
+ * first school the person belongs to. Without this, a School Admin who also
+ * teaches could land in their teacher context purely because of row order, and
+ * miss the powers their admin role gives them.
+ */
+export function defaultLoginContext(
+  schools: Membership[],
+): { schoolSlug: string; schoolName: string; role: Role; status: School["status"] } | null {
+  const contexts = loginContexts(schools);
+  const firstSchool = contexts[0]?.schoolSlug;
+  if (!firstSchool) return null;
+
+  return contexts
+    .filter((context) => context.schoolSlug === firstSchool)
+    .sort((a, b) => ROLE_PRIORITY[b.role] - ROLE_PRIORITY[a.role])[0];
 }
 
 /** True when the user has more than one sign-in context to choose from. */

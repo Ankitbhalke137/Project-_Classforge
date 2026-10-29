@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { AlertIcon, EyeIcon, EyeOffIcon, ShieldCheckIcon } from "@/components/ui/icons";
 import { ApiError, api } from "@/lib/api";
-import { landingPath, loginContexts } from "@/lib/nav";
+import { defaultLoginContext, landingPath, loginContexts } from "@/lib/nav";
 import { useAuth } from "@/store/auth";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import type { Role } from "@/types";
@@ -97,10 +97,10 @@ export function LoginForm() {
         return;
       }
 
-      // Sign straight in with the first available (school, role) context.
-      // The user can switch school/role later from the top-left switcher.
-      const only = options[0];
-      setActiveContext(only.schoolSlug, only.role);
+      // Sign in with the most privileged available context (a School Admin who
+      // also teaches should start as the admin). The switcher changes it later.
+      const initial = defaultLoginContext(schools) ?? options[0];
+      setActiveContext(initial.schoolSlug, initial.role);
       router.replace(landingPath(user, schools));
     } catch (err) {
       const rejected = err instanceof ApiError && err.status === 401;
@@ -137,8 +137,8 @@ export function LoginForm() {
       return;
     }
 
-    const only = options[0];
-    setActiveContext(only.schoolSlug, only.role);
+    const initial = defaultLoginContext(schools) ?? options[0];
+    setActiveContext(initial.schoolSlug, initial.role);
     router.replace(landingPath(user, schools));
   }
 
