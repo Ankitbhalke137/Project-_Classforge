@@ -346,16 +346,6 @@ export const schoolApi = {
       withQuery(`/api/t/${schoolSlug}/students/${studentId}/report-card`, params),
     ),
 
-  listClassesWithSections: (schoolSlug: string) =>
-    api<{
-      data: Array<{
-        id: string;
-        name: string;
-        academicYear: { id: string; name: string; status: string };
-        sections: Array<{ id: string; name: string }>;
-      }>;
-    }>(`/api/t/${schoolSlug}/classes`),
-
   /** Always paginated — the rows arrive under `data` with a `pagination` block. */
   listTeachers: (schoolSlug: string, params: ListParams = {}) =>
     api<Paginated<Teacher>>(withQuery(`/api/t/${schoolSlug}/teachers`, params)),

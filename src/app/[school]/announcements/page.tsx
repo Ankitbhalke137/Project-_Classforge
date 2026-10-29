@@ -53,10 +53,9 @@ export default function AnnouncementsPage() {
     [schoolSlug, page, search, priority, audience],
   );
 
-  const classesWithSections = useApi(
-    () => schoolApi.listClassesWithSections(schoolSlug),
-    [schoolSlug],
-  );
+  // `/classes` returns one row per section, which is exactly what the section
+  // picker needs. It is a flat array, not grouped by class.
+  const classes = useApi(() => schoolApi.listClasses(schoolSlug), [schoolSlug]);
 
   const assignments = useApi(
     () =>
@@ -67,13 +66,11 @@ export default function AnnouncementsPage() {
   );
 
   const assignedSectionIds = new Set((assignments.data ?? []).map((row) => row.sectionId));
-  const classRows = classesWithSections.data?.data ?? [];
-  const allSections = classRows.flatMap((row) =>
-    row.sections.map((section) => ({
-      value: section.id,
-      label: `${row.name} · ${section.name}`,
-    })),
-  );
+  const sectionRows = classes.data ?? [];
+  const allSections = sectionRows.map((row) => ({
+    value: row.id,
+    label: row.name,
+  }));
   const sectionOptions = isTeacher
     ? allSections.filter((section) => assignedSectionIds.has(section.value))
     : allSections;
